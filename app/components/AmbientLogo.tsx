@@ -15,23 +15,23 @@ export function AmbientLogo({ width = 214, height = 22, className = '' }: Ambien
         <div 
             className={`${className}`} 
             style={{ 
-                width: width || 214,
-                height: height || 22,
-                display: 'flex',
                 alignItems: 'center',
+                display: 'flex',
                 gap: '8px',
+                height: height || 22,
+                width: width || 214,
             }}
         >
             {/* Circular logo with rings */}
             <div
                 style={{ 
-                    width: logoSize,
-                    height: logoSize,
-                    display: 'inline-block',
-                    overflow: 'hidden',
-                    borderRadius: '50%',
                     backgroundColor: 'rgb(30, 36, 35)',
+                    borderRadius: '50%',
+                    display: 'inline-block',
                     flexShrink: 0,
+                    height: logoSize,
+                    overflow: 'hidden',
+                    width: logoSize,
                 }}
             >
                 <iframe
@@ -39,13 +39,13 @@ export function AmbientLogo({ width = 214, height = 22, className = '' }: Ambien
                     width={400}
                     height={400}
                     style={{
-                        border: 'none',
                         background: 'rgb(30, 36, 35)',
-                        overflow: 'hidden',
+                        border: 'none',
                         display: 'block',
+                        filter: 'brightness(0.555) contrast(6.5) invert(1) hue-rotate(240deg)',
+                        overflow: 'hidden',
                         transform: `scale(${logoSize / 400})`,
                         transformOrigin: 'top left',
-                        filter: 'brightness(0.555) contrast(6.5) invert(1) hue-rotate(240deg)',
                     }}
                     title="Ambient Logo"
                     scrolling="no"
@@ -56,14 +56,14 @@ export function AmbientLogo({ width = 214, height = 22, className = '' }: Ambien
             {/* Ambient text with blue gradient */}
             <span
                 style={{
-                    fontSize: `${Math.max(logoSize * 0.8, 16)}px`,
-                    fontFamily: 'var(--font-geist-sans)',
-                    fontOpticalSizing: 'auto',
-                    fontWeight: '500',
-                    background: 'linear-gradient(135deg, #4A90E2 0%, #7BB3F0 50%, #A8D0F8 100%)',
                     WebkitBackgroundClip: 'text',
                     WebkitTextFillColor: 'transparent',
+                    background: 'linear-gradient(135deg, #4A90E2 0%, #7BB3F0 50%, #A8D0F8 100%)',
                     backgroundClip: 'text',
+                    fontFamily: 'var(--font-geist-sans)',
+                    fontOpticalSizing: 'auto',
+                    fontSize: `${Math.max(logoSize * 0.8, 16)}px`,
+                    fontWeight: '500',
                     letterSpacing: '0.5px',
                 }}
             >
