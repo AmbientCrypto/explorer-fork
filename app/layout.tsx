@@ -15,9 +15,9 @@ const SearchBar = dynamic(() => import('@components/SearchBar'), {
 });
 
 export const metadata: Metadata = {
-    description: 'Inspect transactions, accounts, blocks, and more on the Solana blockchain',
+    description: 'Inspect transactions, accounts, blocks, and more on the Ambient blockchain',
     manifest: '/manifest.json',
-    title: 'Explorer | Solana',
+    title: 'Explorer | Ambient',
 };
 
 export const viewport: Viewport = {

@@ -42,7 +42,7 @@ export default function Page() {
                         </div>
                     </div>
 
-                    <DeveloperResources />
+                    {/* <DeveloperResources /> */}
 
                     <UpcomingFeatures />
                 </div>
