@@ -1,13 +1,12 @@
 'use client';
 
-import Logo from '@img/logos-solana/dark-explorer-logo.svg';
 import { useDisclosure } from '@mantine/hooks';
 import { useClusterPath } from '@utils/url';
-import Image from 'next/image';
 import Link from 'next/link';
 import { useSelectedLayoutSegment, useSelectedLayoutSegments } from 'next/navigation';
 import React, { ReactNode } from 'react';
 
+import { AmbientLogo } from './AmbientLogo';
 import { ClusterStatusButton } from './ClusterStatusButton';
 
 export interface INavbarProps {
@@ -26,7 +25,7 @@ export function Navbar({ children }: INavbarProps) {
         <nav className="navbar navbar-expand-lg navbar-light">
             <div className="container px-4">
                 <Link href={homePath}>
-                    <Image alt="Solana Explorer" height={22} src={Logo} width={214} />
+                    <AmbientLogo width={214} height={22} />
                 </Link>
 
                 <button className="navbar-toggler" type="button" onClick={navHandlers.toggle}>
@@ -70,7 +69,7 @@ export function Navbar({ children }: INavbarProps) {
                         <li className="nav-item align-items-center justify-content-center pt-2">
                             <a
                                 aria-label="GitHub Repository"
-                                href="https://github.com/solana-foundation/explorer"
+                                href="https://github.com/AmbientCrypto/explorer-fork"
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="mx-3"

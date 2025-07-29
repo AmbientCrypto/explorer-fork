@@ -9,6 +9,7 @@ import { ScrollAnchorProvider } from '@providers/scroll-anchor';
 import type { Viewport } from 'next';
 import dynamic from 'next/dynamic';
 import { Rubik } from 'next/font/google';
+import { GeistSans } from 'geist/font/sans';
 import { Metadata } from 'next/types';
 const SearchBar = dynamic(() => import('@components/SearchBar'), {
     ssr: false,
@@ -41,7 +42,7 @@ export default function RootLayout({
     children: React.ReactNode;
 }) {
     return (
-        <html lang="en" className={`${rubikFont.variable}`}>
+        <html lang="en" className={`${rubikFont.variable} ${GeistSans.variable}`}>
             <head>
                 <link rel="icon" href="/favicon.png" type="image/png" />
                 <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
