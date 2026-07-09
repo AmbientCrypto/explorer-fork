@@ -34,21 +34,25 @@ export function ClusterProvider({ searchParams, onReplaceSearchParams, children 
     const cluster = parseQuery(searchParams);
     const { customUrl, url } = useClusterUrl({ cluster, onReplaceSearchParams, searchParams });
 
-    // The connection health check IS the fetch. Keying by URL means a cluster switch abandons the
+    // The connection health check IS the fetch. Keying by cluster + URL means a cluster switch abandons the
     // in-flight request (SWR writes it to the old key, never the current one) — this replaces the old
     // manual stale-response guard — and a new key resets `data` to undefined, i.e. back to Connecting.
     //
     // Status tracks ONLY genesis-hash reachability. Live ledger info (epoch/schedule/first block) is
     // fetched separately and lazily by useClusterInfo(), so a partial RPC failure there degrades to a
     // loading card that self-heals via SWR retry — it does not fail the whole cluster.
-    const { data: genesisHash, error } = useSWRImmutable(['cluster-connection', url], () => fetchGenesisHash(url), {
-        onError: connectionError => {
-            if (cluster !== Cluster.Custom) {
-                Logger.error(connectionError, { clusterUrl: url });
-            }
+    const { data: genesisHash, error } = useSWRImmutable(
+        ['cluster-connection', cluster, url],
+        () => fetchGenesisHash(url),
+        {
+            onError: connectionError => {
+                if (cluster !== Cluster.Custom) {
+                    Logger.error(connectionError, { clusterUrl: url });
+                }
+            },
+            shouldRetryOnError: false,
         },
-        shouldRetryOnError: false,
-    });
+    );
 
     const status = deriveConnectionStatus({ error, genesisHash });
 
