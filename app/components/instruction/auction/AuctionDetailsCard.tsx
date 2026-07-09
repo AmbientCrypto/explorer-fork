@@ -52,7 +52,7 @@ function renderValue(key: string, value: unknown): React.ReactNode {
     }
     if (typeof value === 'string') {
         if (key.includes('hash')) {
-            return <pre className="d-inline-block text-start mb-0 data-wrap">{value}</pre>;
+            return <pre className="d-inline-block data-wrap mb-0 text-start">{value}</pre>;
         }
         const pubkey = isAddressField(key) ? toPubkey(value) : undefined;
         return pubkey ? <Address pubkey={pubkey} alignRight link raw /> : value;
@@ -74,12 +74,12 @@ function renderValue(key: string, value: unknown): React.ReactNode {
         return (
             <>
                 <span>{formatName(named.name)}</span>
-                {named.value !== undefined ? <span className="text-muted ms-2">#{named.value}</span> : undefined}
+                {named.value !== undefined ? <span className="ms-2 text-muted">#{named.value}</span> : undefined}
             </>
         );
     }
     if (typeof value === 'object') {
-        return <pre className="d-inline-block text-start mb-0 data-wrap">{JSON.stringify(value, undefined, 2)}</pre>;
+        return <pre className="d-inline-block data-wrap mb-0 text-start">{JSON.stringify(value, undefined, 2)}</pre>;
     }
     return String(value);
 }
@@ -89,7 +89,7 @@ function PageEntriesTable({ entries }: { entries: Record<string, unknown>[] }) {
         return <span className="text-muted">None</span>;
     }
     return (
-        <table className="table table-sm mb-0">
+        <table className="table-sm mb-0 table">
             <thead>
                 <tr>
                     <th className="text-muted">Job</th>
@@ -119,7 +119,7 @@ function TierConfigsTable({ configs }: { configs: Record<string, unknown>[] }) {
         return <span className="text-muted">None</span>;
     }
     return (
-        <table className="table table-sm mb-0">
+        <table className="table-sm mb-0 table">
             <thead>
                 <tr>
                     <th className="text-muted">#</th>

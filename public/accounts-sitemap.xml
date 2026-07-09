@@ -48,6 +48,11 @@
     <priority>0.4</priority>
   </url>
   <url>
+    <loc>https://explorer.solana.com/address/Auction111111111111111111111111111111111111</loc>
+    <changefreq>daily</changefreq>
+    <priority>0.4</priority>
+  </url>
+  <url>
     <loc>https://explorer.solana.com/address/ComputeBudget111111111111111111111111111111</loc>
     <changefreq>daily</changefreq>
     <priority>0.4</priority>

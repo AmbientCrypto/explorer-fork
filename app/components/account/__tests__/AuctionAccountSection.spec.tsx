@@ -94,11 +94,17 @@ const bundleEscrow = {
 };
 
 test('should dispatch auction parsed accounts from jsonParsed data', async () => {
-    const parsed = await handleParsedAccountData(new Connection('http://localhost:8899'), accountAddress, {
-        parsed: bundleEscrow,
-        program: 'auction',
-        space: 1_024,
-    } as ParsedAccountData, 'http://localhost:8899', 1_000);
+    const parsed = await handleParsedAccountData(
+        new Connection('http://localhost:8899'),
+        accountAddress,
+        {
+            parsed: bundleEscrow,
+            program: 'auction',
+            space: 1_024,
+        } as ParsedAccountData,
+        'http://localhost:8899',
+        1_000,
+    );
 
     expect(parsed?.program).toBe('auction');
     expect(parsed?.parsed.type).toBe('bundleEscrowV2');
@@ -106,7 +112,7 @@ test('should dispatch auction parsed accounts from jsonParsed data', async () =>
 
 test('should hide generic tokens and domains tabs for auction accounts', () => {
     expect(showGenericAccountTabs({ parsed: bundleEscrow, program: 'auction' } as any, 'auction:bundleEscrowV2')).toBe(
-        false
+        false,
     );
 });
 

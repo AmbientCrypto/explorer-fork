@@ -60,7 +60,7 @@ test('should render parsed auction v2 instruction details', () => {
                 tx={{ signatures: ['signature'] } as any}
                 InstructionCardComponent={BaseInstructionCard}
             />
-        </ScrollAnchorProvider>
+        </ScrollAnchorProvider>,
     );
 
     expect(screen.getByText('Auction: Post Bundle Result V2')).toBeInTheDocument();

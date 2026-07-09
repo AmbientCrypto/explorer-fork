@@ -14,7 +14,7 @@ export function AuctionProgramErrorRow({ error }: { error?: ParsedProgramError }
     }
 
     return (
-        <div className="grid min-h-9 grid-cols-[clamp(100px,25%,200px)_1fr] items-baseline gap-2 border-1 border-b border-white/10 px-3 py-2.5 [border-bottom-style:solid] md:px-4">
+        <div className="border-1 grid min-h-9 grid-cols-[clamp(100px,25%,200px)_1fr] items-baseline gap-2 border-b border-white/10 px-3 py-2.5 [border-bottom-style:solid] md:px-4">
             <div className="flex flex-wrap items-center gap-1 overflow-hidden text-sm text-outer-space-300">
                 Auction Error
             </div>

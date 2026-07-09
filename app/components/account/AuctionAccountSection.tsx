@@ -69,7 +69,11 @@ function BundleEscrowCard({ account, info }: { account: Account; info: BundleEsc
                 </tr>
                 <HashRow label="Auction Hash" base58={info.auctionHashBase58} base64={info.auctionHash} />
                 <HashRow label="Result Hash" base58={info.resultHashBase58} base64={info.resultHash} />
-                <HashRow label="Verification Hash" base58={info.verificationHashBase58} base64={info.verificationHash} />
+                <HashRow
+                    label="Verification Hash"
+                    base58={info.verificationHashBase58}
+                    base64={info.verificationHash}
+                />
                 <TextRow label="Posted Output Tokens" value={info.postedOutputTokens} />
                 <TextRow label="Accepted Output Tokens" value={info.acceptedOutputTokens} />
                 <TextRow label="Winner Payout Lamports" value={info.winnerPayoutLamports} />
@@ -162,7 +166,7 @@ function VerifierEntriesCard({ entries }: { entries: BundleVerifierPageV2Entry[]
                 <h3 className="card-header-title">Verifier Entries</h3>
             </div>
             <div className="table-responsive mb-0">
-                <table className="table table-sm card-table">
+                <table className="table-sm card-table table">
                     <thead>
                         <tr>
                             <th className="text-muted">Job</th>
@@ -218,7 +222,7 @@ function TierConfigCard({ configs }: { configs: Record<string, AuctionTierConfig
                 <h3 className="card-header-title">Tier Configs</h3>
             </div>
             <div className="table-responsive mb-0">
-                <table className="table table-sm card-table">
+                <table className="table-sm card-table table">
                     <thead>
                         <tr>
                             <th className="text-muted">Tier</th>
@@ -299,7 +303,7 @@ function HashRow({ label, base58, base64 }: { label: string; base58?: string; ba
             <td>{label}</td>
             <td className="text-lg-end">
                 <div className="font-monospace">{base58 || base64 || <Muted>None</Muted>}</div>
-                {base58 && base64 ? <div className="text-muted small">Base64: {base64}</div> : undefined}
+                {base58 && base64 ? <div className="small text-muted">Base64: {base64}</div> : undefined}
             </td>
         </tr>
     );
@@ -349,15 +353,7 @@ function PubkeyList({ values, indexes }: { values: string[] | undefined; indexes
     );
 }
 
-function PubkeyValue({
-    value,
-    link,
-    alignRight,
-}: {
-    value: string | undefined;
-    link?: boolean;
-    alignRight?: boolean;
-}) {
+function PubkeyValue({ value, link, alignRight }: { value: string | undefined; link?: boolean; alignRight?: boolean }) {
     const pubkey = toPubkey(value);
     if (!pubkey) {
         return <Muted>None</Muted>;
@@ -373,7 +369,7 @@ function EnumBadge({ value }: { value: AuctionEnum | undefined }) {
     return (
         <>
             <span className={`badge bg-${terminal ? 'success' : 'info'}-soft`}>{formatName(value.name)}</span>
-            <span className="text-muted ms-2">#{value.value}</span>
+            <span className="ms-2 text-muted">#{value.value}</span>
         </>
     );
 }
