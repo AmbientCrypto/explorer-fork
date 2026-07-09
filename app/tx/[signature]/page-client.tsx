@@ -10,6 +10,7 @@ import { Slot } from '@components/common/Slot';
 import { SolBalance } from '@components/common/SolBalance';
 import { TableCardBody } from '@components/common/TableCardBody';
 import { SignatureContext } from '@components/instruction/SignatureContext';
+import { AuctionProgramErrorRow, ParsedProgramError } from '@components/transaction/AuctionProgramErrorRow';
 import { InstructionsSection } from '@components/transaction/InstructionsSection';
 import { ProgramLogSection } from '@components/transaction/ProgramLogSection';
 import { TokenBalancesCard } from '@components/transaction/TokenBalancesCard';
@@ -190,6 +191,8 @@ function StatusCard({ signature, autoRefresh }: SignatureProps & AutoRefreshProp
     const transactionWithMeta = details?.data?.transactionWithMeta;
     const fee = transactionWithMeta?.meta?.fee;
     const computeUnitsConsumed = transactionWithMeta?.meta?.computeUnitsConsumed;
+    const parsedProgramError = (transactionWithMeta?.meta as { parsedProgramError?: ParsedProgramError } | undefined)
+        ?.parsedProgramError;
     const transaction = transactionWithMeta?.transaction;
     const blockhash = transaction?.message.recentBlockhash;
     const epoch = clusterInfo ? getEpochForSlot(clusterInfo.epochSchedule, BigInt(info.slot)) : undefined;
@@ -283,6 +286,8 @@ function StatusCard({ signature, autoRefresh }: SignatureProps & AutoRefreshProp
                         </td>
                     </tr>
                 )}
+
+                <AuctionProgramErrorRow error={parsedProgramError} />
 
                 <tr>
                     <td>Timestamp</td>

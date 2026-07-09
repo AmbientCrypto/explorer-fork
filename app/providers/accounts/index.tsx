@@ -18,6 +18,7 @@ import { Cluster } from '@utils/cluster';
 import { pubkeyToString } from '@utils/index';
 import { assertIsTokenProgram, TokenProgram } from '@utils/programs';
 import { ParsedAddressLookupTableAccount } from '@validators/accounts/address-lookup-table';
+import { AuctionAccount } from '@validators/accounts/auction';
 import { ConfigAccount } from '@validators/accounts/config';
 import { NonceAccount } from '@validators/accounts/nonce';
 import { StakeAccount } from '@validators/accounts/stake';
@@ -100,6 +101,11 @@ export type AddressLookupTableProgramData = {
     parsed: ParsedAddressLookupTableAccount;
 };
 
+export type AuctionProgramData = {
+    program: 'auction';
+    parsed: AuctionAccount;
+};
+
 export type ParsedData =
     | UpgradeableLoaderAccountData
     | StakeProgramData
@@ -108,7 +114,8 @@ export type ParsedData =
     | NonceProgramData
     | SysvarProgramData
     | ConfigProgramData
-    | AddressLookupTableProgramData;
+    | AddressLookupTableProgramData
+    | AuctionProgramData;
 
 export interface AccountData {
     parsed?: ParsedData;
@@ -311,7 +318,7 @@ async function fetchMultipleAccounts({
     }
 }
 
-async function handleParsedAccountData(
+export async function handleParsedAccountData(
     connection: Connection,
     accountKey: PublicKey,
     accountData: ParsedAccountData
@@ -389,6 +396,13 @@ async function handleParsedAccountData(
             const parsed = create(info, ParsedAddressLookupTableAccount);
             return {
                 parsed,
+                program: accountData.program,
+            };
+        }
+
+        case 'auction': {
+            return {
+                parsed: create(info, AuctionAccount),
                 program: accountData.program,
             };
         }

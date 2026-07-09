@@ -4,6 +4,7 @@ import { NFTokenAccountHeader } from '@components/account/nftoken/NFTokenAccount
 import { Identicon } from '@components/common/Identicon';
 import { Account, isTokenProgramData, TokenProgramData, useMintAccountInfo } from '@providers/accounts';
 import isMetaplexNFT from '@providers/accounts/utils/isMetaplexNFT';
+import { AuctionAccount } from '@validators/accounts/auction';
 import { MetadataPointer, TokenMetadata } from '@validators/accounts/token-extension';
 import React, { Suspense, useMemo } from 'react';
 import { ErrorBoundary } from 'react-error-boundary';
@@ -51,6 +52,10 @@ export function AccountHeader({
         return <TokenMintHeader address={address} mintInfo={mintInfo} parsedData={parsedData} tokenInfo={tokenInfo} />;
     }
 
+    if (parsedData?.program === 'auction') {
+        return <AuctionAccountHeader account={parsedData.parsed} />;
+    }
+
     const fallback = (
         <div className="e-flex e-flex-col">
             <h6 className="header-pretitle">Details</h6>
@@ -67,6 +72,26 @@ export function AccountHeader({
         );
     }
     return fallback;
+}
+
+function AuctionAccountHeader({ account }: { account: AuctionAccount }) {
+    return (
+        <div className="e-flex e-flex-col">
+            <h6 className="header-pretitle">Auction</h6>
+            <h2 className="header-title">{auctionAccountTitle(account.type)}</h2>
+        </div>
+    );
+}
+
+function auctionAccountTitle(type: AuctionAccount['type']) {
+    switch (type) {
+        case 'bundleEscrowV2':
+            return 'Bundle Escrow V2';
+        case 'bundleVerifierPageV2':
+            return 'Verifier Page V2';
+        case 'configPolicyV2':
+            return 'Config Policy V2';
+    }
 }
 
 function TokenMintHeader({
