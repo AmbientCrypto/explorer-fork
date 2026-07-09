@@ -46,6 +46,7 @@ export enum PROGRAM_NAMES {
     PROGRAM_METADATA = 'Program Metadata Program',
 
     // foundation programs
+    AUCTION = 'Ambient Auction Program',
     SAS_PROGRAM = 'Solana Attestation Service Program',
 
     // other
@@ -161,7 +162,10 @@ export const PROGRAM_INFO_BY_ID: { [address: string]: ProgramInfo } = {
         deployments: ALL_CLUSTERS,
         name: PROGRAM_NAMES.ADDRESS_LOOKUP_TABLE,
     },
-
+    Auction111111111111111111111111111111111111: {
+        deployments: ALL_CLUSTERS,
+        name: PROGRAM_NAMES.AUCTION,
+    },
     ComputeBudget111111111111111111111111111111: {
         deployments: ALL_CLUSTERS,
         name: PROGRAM_NAMES.COMPUTE_BUDGET,

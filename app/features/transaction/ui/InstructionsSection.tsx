@@ -2,6 +2,7 @@ import { ErrorCard } from '@components/common/ErrorCard';
 import { LoadingCard } from '@components/common/LoadingCard';
 import { AddressLookupTableDetailsCard } from '@components/instruction/AddressLookupTableDetailsCard';
 import { AssociatedTokenDetailsCard } from '@components/instruction/associated-token/AssociatedTokenDetailsCard';
+import { AuctionDetailsCard } from '@components/instruction/auction/AuctionDetailsCard';
 import { BpfLoaderDetailsCard } from '@components/instruction/bpf-loader/BpfLoaderDetailsCard';
 import { BpfUpgradeableLoaderDetailsCard } from '@components/instruction/bpf-upgradeable-loader/BpfUpgradeableLoaderDetailsCard';
 import { ComputeBudgetDetailsCard } from '@components/instruction/ComputeBudgetDetailsCard';
@@ -219,6 +220,8 @@ function InstructionCard({
                 return <VoteDetailsCard {...props} key={key} />;
             case 'address-lookup-table':
                 return <AddressLookupTableDetailsCard {...props} key={key} />;
+            case 'auction':
+                return <AuctionDetailsCard {...props} key={key} />;
             default:
                 return <UnknownDetailsCard {...props} key={key} />;
         }

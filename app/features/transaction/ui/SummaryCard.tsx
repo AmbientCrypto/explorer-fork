@@ -36,6 +36,8 @@ import { AUTO_REFRESH_INTERVAL, AutoRefresh, WithAutoRefreshProp } from '@/app/s
 import { Card } from '@/app/shared/ui/Card';
 import { getEpochForSlot } from '@/app/utils/epoch-schedule';
 
+import { AuctionProgramErrorRow, ParsedProgramError } from './AuctionProgramErrorRow';
+
 type RowProps = React.HTMLAttributes<HTMLDivElement> & { divider?: boolean };
 export function Row({ children, className, divider, ...props }: RowProps) {
     return (
@@ -157,6 +159,8 @@ export function SummaryCard({ signature, autoRefresh }: SignatureProps & WithAut
     const fee = transactionWithMeta?.meta?.fee;
     const costUnits = transactionWithMeta?.meta?.costUnits;
     const computeUnitsConsumed = transactionWithMeta?.meta?.computeUnitsConsumed;
+    const parsedProgramError = (transactionWithMeta?.meta as { parsedProgramError?: ParsedProgramError } | undefined)
+        ?.parsedProgramError;
     const reservedCUs = transactionWithMeta?.transaction
         ? estimateRequestedComputeUnitsForParsedTransaction(
               transactionWithMeta.transaction,
@@ -254,6 +258,8 @@ export function SummaryCard({ signature, autoRefresh }: SignatureProps & WithAut
                         )}
                     </Value>
                 </Row>
+
+                <AuctionProgramErrorRow error={parsedProgramError} />
 
                 {/* Confirmation */}
                 <Row divider>

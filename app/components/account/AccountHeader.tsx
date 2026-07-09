@@ -11,6 +11,7 @@ import {
     useMintAccountInfo,
 } from '@providers/accounts';
 import { useMetadataJsonLink } from '@providers/compressed-nft';
+import { AuctionAccount } from '@validators/accounts/auction';
 import { MintAccountInfo } from '@validators/accounts/token';
 import { MetadataPointer, TokenMetadata } from '@validators/accounts/token-extension';
 import React, { Suspense, useMemo } from 'react';
@@ -83,6 +84,10 @@ export function AccountHeader({
         return <TokenMintHeader address={address} mintInfo={mintInfo} parsedData={parsedData} tokenInfo={tokenInfo} />;
     }
 
+    if (parsedData?.program === 'auction') {
+        return <AuctionAccountHeader account={parsedData.parsed} />;
+    }
+
     if (account) {
         return (
             <ErrorBoundary fallback={fallback}>
@@ -93,6 +98,26 @@ export function AccountHeader({
         );
     }
     return fallback;
+}
+
+function AuctionAccountHeader({ account }: { account: AuctionAccount }) {
+    return (
+        <div className="flex flex-col justify-center gap-1 md:min-h-[69px]">
+            <h6 className="uppercase tracking-[0.08em] text-dk-gray-700">Auction</h6>
+            <h2 className="mb-0">{auctionAccountTitle(account.type)}</h2>
+        </div>
+    );
+}
+
+function auctionAccountTitle(type: AuctionAccount['type']) {
+    switch (type) {
+        case 'bundleEscrowV2':
+            return 'Bundle Escrow V2';
+        case 'bundleVerifierPageV2':
+            return 'Verifier Page V2';
+        case 'configPolicyV2':
+            return 'Config Policy V2';
+    }
 }
 
 function TokenMintHeader({

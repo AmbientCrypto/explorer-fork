@@ -4,6 +4,7 @@ import '@/app/types/bigint'; // polyfill toJSON for BigInt
 
 import { AddressLookupTableAccountSection } from '@components/account/address-lookup-table/AddressLookupTableAccountSection';
 import { isAddressLookupTableAccount } from '@components/account/address-lookup-table/types';
+import { AuctionAccountSection } from '@components/account/AuctionAccountSection';
 import { ConfigAccountSection } from '@components/account/ConfigAccountSection';
 import { FeatureAccountSection } from '@components/account/FeatureAccountSection';
 import { isNFTokenAccount, parseNFTokenCollectionAccount } from '@components/account/nftoken/isNFTokenAccount';
@@ -12,6 +13,7 @@ import { NFTokenAccountSection } from '@components/account/nftoken/NFTokenAccoun
 import { NonceAccountSection } from '@components/account/NonceAccountSection';
 import { detectSquadsAccountType, SquadsAccountSection } from '@components/account/squads/SquadsAccountSection';
 import { SysvarAccountSection } from '@components/account/SysvarAccountSection';
+import { showGenericAccountTabs } from '@components/account/tabs';
 import { TokenAccountSection } from '@components/account/TokenAccountSection';
 import { UnknownAccountCard } from '@components/account/UnknownAccountCard';
 import { UpgradeableLoaderAccountSection } from '@components/account/UpgradeableLoaderAccountSection';
@@ -99,8 +101,6 @@ const TABS_LOOKUP: Record<string, AddressTab[]> = {
         { path: 'rewards', title: 'Rewards' },
     ],
 };
-
-const TOKEN_TABS_HIDDEN = ['spl-token:mint', 'spl-token-2022:mint', 'config', 'vote', 'sysvar'];
 
 export type AddressTabPath =
     | ''
@@ -303,6 +303,8 @@ function InfoSection({ account, tokenInfo }: { account: Account; tokenInfo?: Ful
         return <SysvarAccountSection account={account} sysvarAccount={parsedData.parsed} />;
     } else if (parsedData && parsedData.program === 'config') {
         return <ConfigAccountSection account={account} configAccount={parsedData.parsed} />;
+    } else if (parsedData && parsedData.program === 'auction') {
+        return <AuctionAccountSection account={account} auctionAccount={parsedData.parsed} />;
     } else if (
         parsedData &&
         parsedData.program === 'address-lookup-table' &&
@@ -413,10 +415,7 @@ function getNavigationTabs(pubkey: PublicKey, account: Account): AddressTab[] {
         }
     }
 
-    if (
-        !isNFToken &&
-        (!parsedData || !(TOKEN_TABS_HIDDEN.includes(parsedData.program) || TOKEN_TABS_HIDDEN.includes(programTypeKey)))
-    ) {
+    if (!isNFToken && showGenericAccountTabs(parsedData, programTypeKey)) {
         tabs.push({ path: 'tokens', title: 'Tokens' });
         tabs.push({ path: 'domains', title: 'Domains' });
     }
