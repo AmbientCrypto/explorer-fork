@@ -7,7 +7,6 @@ import { TableCardBody } from '@components/common/TableCardBody';
 import { TimestampToggle } from '@components/common/TimestampToggle';
 import { LiveTransactionStatsCard } from '@components/LiveTransactionStatsCard';
 import { StatsNotReady } from '@components/StatsNotReady';
-import { UpcomingFeatures } from '@features/feature-gate';
 import { useCluster } from '@providers/cluster';
 import { StatsProvider } from '@providers/stats';
 import {
@@ -28,7 +27,6 @@ import React from 'react';
 import { Card, CardBody, CardHeader, CardTitle } from '@/app/shared/ui/Card';
 import { PageContainer } from '@/app/shared/ui/page-container/PageContainer';
 
-import { DeveloperResources } from './components/DeveloperResources';
 import { SimpleCardSkeleton } from './components/shared/Skeletons';
 
 const AUCTION_PROGRAM_ID = 'Auction111111111111111111111111111111111111';
@@ -50,9 +48,7 @@ export default function Page() {
                         </div>
                     </div>
 
-                    <DeveloperResources />
-
-                    <UpcomingFeatures />
+                    <AmbientExplorerSection />
                 </PageContainer>
             </SupplyProvider>
         </StatsProvider>
@@ -261,6 +257,47 @@ function AuctionProgramActivityCard() {
                         <td className="text-right">{stats.message}</td>
                     </tr>
                 )}
+            </TableCardBody>
+        </Card>
+    );
+}
+
+function AmbientExplorerSection() {
+    const auctionProgramPath = useClusterPath({ pathname: `/address/${AUCTION_PROGRAM_ID}` });
+    const inspectorPath = useClusterPath({ pathname: '/tx/inspector' });
+
+    return (
+        <Card ui="dashkit" className="mb-3 md:mb-6">
+            <CardHeader ui="dashkit">
+                <CardTitle as="h4" ui="dashkit">
+                    Ambient On-Chain Data
+                </CardTitle>
+            </CardHeader>
+            <TableCardBody layout="expanded" className="[&_td:first-child]:!w-2/5 md:[&_td:first-child]:!w-auto">
+                <tr>
+                    <td className="w-full">Auction program</td>
+                    <td className="text-right font-mono">
+                        <Link className="link" href={auctionProgramPath}>
+                            Ambient Auction Program
+                        </Link>
+                    </td>
+                </tr>
+                <tr>
+                    <td className="w-full">Parsed accounts</td>
+                    <td className="text-right">Bundle escrows, verifier pages, config policy</td>
+                </tr>
+                <tr>
+                    <td className="w-full">Parsed transactions</td>
+                    <td className="text-right">
+                        <Link className="link" href={inspectorPath}>
+                            Auction instructions and errors
+                        </Link>
+                    </td>
+                </tr>
+                <tr>
+                    <td className="w-full">Reward model</td>
+                    <td className="text-right">Ambient LStake auction rewards</td>
+                </tr>
             </TableCardBody>
         </Card>
     );
