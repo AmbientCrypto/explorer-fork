@@ -17,6 +17,13 @@ import {
 import React from 'react';
 
 const DEFAULT_PUBKEY = '11111111111111111111111111111111';
+const ZERO_HASH_BASE64 = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=';
+const BUNDLE_STATUS = {
+    awarded: 1,
+    expired: 5,
+    open: 0,
+    resultPosted: 2,
+};
 
 export function AuctionAccountSection({
     account,
@@ -67,12 +74,23 @@ function BundleEscrowCard({ account, info }: { account: Account; info: BundleEsc
                         <PubkeyList values={info.selectedVerifiers} indexes={info.selectedVerifierIndexes} />
                     </td>
                 </tr>
-                <HashRow label="Auction Hash" base58={info.auctionHashBase58} base64={info.auctionHash} />
-                <HashRow label="Result Hash" base58={info.resultHashBase58} base64={info.resultHash} />
+                <HashRow
+                    label="Auction Hash"
+                    base58={info.auctionHashBase58}
+                    base64={info.auctionHash}
+                    placeholder={lifecycleHashPlaceholder(info, 'auction')}
+                />
+                <HashRow
+                    label="Result Hash"
+                    base58={info.resultHashBase58}
+                    base64={info.resultHash}
+                    placeholder={lifecycleHashPlaceholder(info, 'result')}
+                />
                 <HashRow
                     label="Verification Hash"
                     base58={info.verificationHashBase58}
                     base64={info.verificationHash}
+                    placeholder={lifecycleHashPlaceholder(info, 'verification')}
                 />
                 <TextRow label="Posted Output Tokens" value={info.postedOutputTokens} />
                 <TextRow label="Accepted Output Tokens" value={info.acceptedOutputTokens} />
@@ -297,13 +315,29 @@ function SlotRow({ label, value }: { label: string; value: number | undefined })
     );
 }
 
-function HashRow({ label, base58, base64 }: { label: string; base58?: string; base64?: string }) {
+function HashRow({
+    label,
+    base58,
+    base64,
+    placeholder,
+}: {
+    label: string;
+    base58?: string;
+    base64?: string;
+    placeholder?: string;
+}) {
     return (
         <tr>
             <td>{label}</td>
             <td className="text-lg-end">
-                <div className="font-monospace">{base58 || base64 || <Muted>None</Muted>}</div>
-                {base58 && base64 ? <div className="small text-muted">Base64: {base64}</div> : undefined}
+                {placeholder ? (
+                    <Muted>{placeholder}</Muted>
+                ) : (
+                    <>
+                        <div className="font-monospace">{base58 || base64 || <Muted>None</Muted>}</div>
+                        {base58 && base64 ? <div className="small text-muted">Base64: {base64}</div> : undefined}
+                    </>
+                )}
             </td>
         </tr>
     );
@@ -463,4 +497,50 @@ function layoutVersionText(value: ConfigPolicyV2Info['v2AccountLayoutVersion']) 
         return value;
     }
     return `Invalid (${value.raw})`;
+}
+
+function lifecycleHashPlaceholder(info: BundleEscrowV2Info, hash: 'auction' | 'result' | 'verification') {
+    const status = info.status?.value;
+    if (!isZeroLifecycleHash(info, hash)) {
+        return undefined;
+    }
+
+    if (hash === 'auction') {
+        if (status === BUNDLE_STATUS.open) return 'Settlement not committed yet';
+        if (status === BUNDLE_STATUS.expired) return 'Expired before settlement';
+        return 'Zero hash';
+    }
+
+    if (hash === 'result') {
+        if (status === BUNDLE_STATUS.open || status === BUNDLE_STATUS.awarded) return 'Result not posted yet';
+        if (status === BUNDLE_STATUS.expired) {
+            return isZeroLifecycleHash(info, 'auction') ? 'Expired before settlement' : 'Expired before result';
+        }
+        return 'Zero hash';
+    }
+
+    if (status === BUNDLE_STATUS.open || status === BUNDLE_STATUS.awarded || status === BUNDLE_STATUS.resultPosted) {
+        return 'Verification not finalized yet';
+    }
+    if (status === BUNDLE_STATUS.expired) {
+        if (isZeroLifecycleHash(info, 'auction')) return 'Expired before settlement';
+        if (isZeroLifecycleHash(info, 'result')) return 'Expired before result';
+        return 'Expired before verification';
+    }
+    return 'Zero hash';
+}
+
+function isZeroLifecycleHash(info: BundleEscrowV2Info, hash: 'auction' | 'result' | 'verification') {
+    switch (hash) {
+        case 'auction':
+            return isZeroHash(info.auctionHashBase58, info.auctionHash);
+        case 'result':
+            return isZeroHash(info.resultHashBase58, info.resultHash);
+        case 'verification':
+            return isZeroHash(info.verificationHashBase58, info.verificationHash);
+    }
+}
+
+function isZeroHash(base58: string | undefined, base64: string | undefined) {
+    return base58 === DEFAULT_PUBKEY || base64 === ZERO_HASH_BASE64;
 }

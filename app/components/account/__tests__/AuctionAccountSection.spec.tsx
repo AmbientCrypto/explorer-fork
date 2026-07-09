@@ -34,6 +34,8 @@ const accountAddress = new PublicKey('8WfKuumhRtY6QBPq416oGx5H5DwYA73T6VN54qdcKY
 const auctionProgramId = new PublicKey(AUCTION_PROGRAM_ID);
 const pubkey = '11111111111111111111111111111112';
 const secondPubkey = '11111111111111111111111111111113';
+const zeroHashBase58 = '11111111111111111111111111111111';
+const zeroHashBase64 = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=';
 
 function makeAccount(parsed: any) {
     return {
@@ -93,6 +95,17 @@ const bundleEscrow = {
     type: 'bundleEscrowV2',
 };
 
+function renderBundleEscrow(overrides: Record<string, unknown>) {
+    const account = {
+        ...bundleEscrow,
+        info: {
+            ...bundleEscrow.info,
+            ...overrides,
+        },
+    };
+    render(<AuctionAccountSection account={makeAccount(account) as any} auctionAccount={account as any} />);
+}
+
 test('should dispatch auction parsed accounts from jsonParsed data', async () => {
     const parsed = await handleParsedAccountData(
         new Connection('http://localhost:8899'),
@@ -123,6 +136,64 @@ test('should render bundle escrow v2 details', () => {
     expect(screen.getByText('Result Posted')).toBeInTheDocument();
     expect(screen.getByText('bundle-hash-base58')).toBeInTheDocument();
     expect(screen.getByText('Verifier Page Count')).toBeInTheDocument();
+});
+
+test('should render unset auction hash as pending settlement', () => {
+    renderBundleEscrow({
+        auctionHash: zeroHashBase64,
+        auctionHashBase58: zeroHashBase58,
+        resultHash: zeroHashBase64,
+        resultHashBase58: zeroHashBase58,
+        status: { name: 'open', terminal: false, value: 0 },
+        verificationHash: zeroHashBase64,
+        verificationHashBase58: zeroHashBase58,
+    });
+
+    expect(screen.getByText('Settlement not committed yet')).toBeInTheDocument();
+    expect(screen.queryByText(`Base64: ${zeroHashBase64}`)).not.toBeInTheDocument();
+});
+
+test('should render unset result hash as pending result post', () => {
+    renderBundleEscrow({
+        resultHash: zeroHashBase64,
+        resultHashBase58: zeroHashBase58,
+        status: { name: 'awarded', terminal: false, value: 1 },
+        verificationHash: zeroHashBase64,
+        verificationHashBase58: zeroHashBase58,
+    });
+
+    expect(screen.getByText('Result not posted yet')).toBeInTheDocument();
+});
+
+test('should render unset verification hash as pending finalization', () => {
+    renderBundleEscrow({
+        status: { name: 'resultPosted', terminal: false, value: 2 },
+        verificationHash: zeroHashBase64,
+        verificationHashBase58: zeroHashBase58,
+    });
+
+    expect(screen.getByText('Verification not finalized yet')).toBeInTheDocument();
+});
+
+test('should render non-zero finalized hashes with base64 detail', () => {
+    renderBundleEscrow({
+        status: { name: 'finalizedVerified', terminal: true, value: 3 },
+    });
+
+    expect(screen.getByText('result-hash-base58')).toBeInTheDocument();
+    expect(screen.getByText('Base64: result-hash-base64')).toBeInTheDocument();
+    expect(screen.getByText('verification-hash-base58')).toBeInTheDocument();
+    expect(screen.getByText('Base64: verification-hash-base64')).toBeInTheDocument();
+});
+
+test('should render unexpected lifecycle zero hash as suspicious', () => {
+    renderBundleEscrow({
+        resultHash: zeroHashBase64,
+        resultHashBase58: zeroHashBase58,
+        status: { name: 'resultPosted', terminal: false, value: 2 },
+    });
+
+    expect(screen.getByText('Zero hash')).toBeInTheDocument();
 });
 
 test('should render verifier page v2 entries', () => {
