@@ -1,11 +1,16 @@
+import { useAnchorProgram } from '@entities/idl';
 import { sha256 } from '@noble/hashes/sha256';
 import { Connection, PublicKey } from '@solana/web3.js';
+import { useMemo } from 'react';
 import useSWRImmutable from 'swr/immutable';
 
-import { useAnchorProgram } from '../providers/anchor';
+import { fromBase64, fromUtf8, toHex } from '@/app/shared/lib/bytes';
+import { Logger } from '@/app/shared/lib/logger';
+
 import { useCluster } from '../providers/cluster';
-import { ProgramDataAccountInfo } from '../validators/accounts/upgradeable-program';
+import { ProgramBufferAccountInfo, ProgramDataAccountInfo } from '../validators/accounts/upgradeable-program';
 import { Cluster } from './cluster';
+import { composeOnchainRepoUrl, normalizeRepoUrl, safeRepoUrl } from './verified-builds-url';
 
 const OSEC_REGISTRY_URL = 'https://verify.osec.io';
 const VERIFY_PROGRAM_ID = 'verifycLy8mB96wd9wqq3WDXQwM4oU6r42Th37Db9fC';
@@ -25,6 +30,7 @@ export type OsecRegistryInfo = {
     executable_hash: string;
     last_verified_at: string | null;
     repo_url: string;
+    onchain_repo_url: string;
     verify_command: string;
 };
 
@@ -39,8 +45,18 @@ export type OsecInfo = {
     is_frozen: boolean;
 };
 
+function parsePublicKey(value: string | undefined): PublicKey | null {
+    if (!value) return null;
+    try {
+        return new PublicKey(value);
+    } catch {
+        return null;
+    }
+}
+
 const TRUSTED_SIGNERS: Record<string, string> = {
     '11111111111111111111111111111111': 'Explorer',
+    '5vJwnLeyjV8uNJSp1zn7VLW8GwiQbcsQbGaVSwRmkE4r': 'Foundation',
     '9VWiUUhgNoRwTH5NVehYJEDwcotwYX3VgW4MChiHPAqU': 'OtterSecurity',
     CyJj5ejJAUveDXnLduJbkvwjxcmWJNqCuB9DR7AExrHn: 'Explorer',
 };
@@ -67,7 +83,7 @@ export function useVerifiedProgramRegistry({
 
             return response.json() as Promise<OsecInfo[]>;
         },
-        { suspense: options?.suspense }
+        { suspense: options?.suspense },
     );
 
     if (!programData || !registryData) {
@@ -79,19 +95,20 @@ export function useVerifiedProgramRegistry({
     if (programAuthority) {
         const trustedEntries = registryData.filter(
             entry =>
-                (TRUSTED_SIGNERS[entry.signer] || entry.signer === programAuthority?.toBase58()) && entry.is_verified
+                (TRUSTED_SIGNERS[entry.signer] || entry.signer === programAuthority?.toBase58()) && entry.is_verified,
         );
 
-        // Update the verification status of the trusted entries based on the on-chain hash
+        // Re-validate the on-chain hash locally (the registry's is_verified flag may be stale)
         const hash = hashProgramData(programData);
-        trustedEntries.forEach(entry => {
-            entry.is_verified = hash === entry['on_chain_hash'];
-        });
+        const validatedEntries = trustedEntries.map(entry => ({
+            ...entry,
+            is_verified: hash === entry['on_chain_hash'],
+        }));
 
         const mappedBySigner: Record<string, OsecInfo> = {};
 
         // Map the registryData by signer in order to enforce hierarchy of trust
-        trustedEntries.forEach(entry => {
+        validatedEntries.forEach(entry => {
             mappedBySigner[entry.signer] = entry;
         });
 
@@ -103,8 +120,18 @@ export function useVerifiedProgramRegistry({
             }
         }
     } else {
-        orderedVerifiedEntries = registryData
-            .filter(entry => entry.is_verified && entry.is_frozen)
+        // Program is immutable (no authority) — trust verified entries from
+        // frozen programs or trusted signers. Since immutable programs cannot
+        // be changed, verification from any trusted source remains valid.
+        const trustedEntries = registryData.filter(
+            entry => entry.is_verified && (entry.is_frozen || TRUSTED_SIGNERS[entry.signer]),
+        );
+
+        // Re-validate against on-chain data since the registry's is_verified flag may be stale
+        const hash = hashProgramData(programData);
+        orderedVerifiedEntries = trustedEntries
+            .map(entry => ({ ...entry, is_verified: hash === entry['on_chain_hash'] }))
+            .filter(entry => entry.is_verified)
             .sort((a, b) => new Date(a.last_verified_at).getTime() - new Date(b.last_verified_at).getTime());
     }
 
@@ -120,7 +147,7 @@ export function useIsProgramVerified({
 }) {
     return useSWRImmutable(
         ['is-program-verified', programId.toBase58(), hashProgramData(programData), programData.authority],
-        async ([_prefix, programId, hash, authority]) => {
+        async ([_prefix, programId, hash]) => {
             if (!programId) {
                 return false;
             }
@@ -128,14 +155,9 @@ export function useIsProgramVerified({
             const response = await fetch(`${OSEC_REGISTRY_URL}/status/${programId}`);
             const osecInfo = (await response.json()) as OsecInfo;
 
-            // If the program data is frozen, then we can trust the API
-            if (osecInfo.is_frozen && authority === null) {
-                return osecInfo.is_verified;
-            }
-
-            // Otherwise, let's just double check that the on-chain hash matches the reported hash for verification
+            // Cross-check the on-chain hash to stay consistent with useVerifiedProgramRegistry
             return osecInfo.is_verified && hash === osecInfo['on_chain_hash'];
-        }
+        },
     );
 }
 
@@ -162,7 +184,7 @@ export function useVerifiedProgram({
     // Get the first verified entry
     const verifiedData = orderedVerifiedEntries?.find(entry => entry.is_verified);
 
-    return useEnrichedOsecInfo({ options, osecInfo: verifiedData, programId });
+    return useEnrichedOsecInfo({ options, osecInfo: verifiedData, programAuthority, programId });
 }
 
 // Internal method to enrich the osec info with the verify command (requires fetching the on-chain PDA)
@@ -170,15 +192,32 @@ function useEnrichedOsecInfo({
     programId,
     osecInfo,
     options,
+    programAuthority,
 }: {
     programId: PublicKey;
     osecInfo: OsecInfo | undefined;
     options?: { suspense: boolean };
+    programAuthority: PublicKey | null;
 }) {
     const { url: clusterUrl, cluster: cluster } = useCluster();
     const connection = new Connection(clusterUrl);
 
     const { program: accountAnchorProgram } = useAnchorProgram(VERIFY_PROGRAM_ID, connection.rpcEndpoint);
+    const signerAuthorities = useMemo(
+        () =>
+            Array.from(
+                new Map(
+                    [
+                        programAuthority,
+                        parsePublicKey(osecInfo?.signer),
+                        ...Object.keys(TRUSTED_SIGNERS).map(parsePublicKey),
+                    ]
+                        .filter((key): key is PublicKey => key !== null)
+                        .map(key => [key.toBase58(), key]),
+                ).values(),
+            ),
+        [programAuthority, osecInfo?.signer],
+    );
 
     // Fetch the PDA derived from the program upgrade authority
     const {
@@ -186,29 +225,34 @@ function useEnrichedOsecInfo({
         error: pdaError,
         isLoading: isPdaLoading,
     } = useSWRImmutable(
-        accountAnchorProgram ? `pda-${programId.toBase58()}-${osecInfo?.signer}` : null,
+        accountAnchorProgram && osecInfo && signerAuthorities.length > 0
+            ? `pda-${programId.toBase58()}-${signerAuthorities.map(x => x.toBase58()).join(',')}`
+            : null,
         async () => {
             if (!osecInfo || !accountAnchorProgram) {
                 return null;
             }
 
-            try {
+            for (const pdaSeedAuthority of signerAuthorities) {
                 const [pda] = PublicKey.findProgramAddressSync(
-                    [Buffer.from('otter_verify'), new PublicKey(osecInfo.signer).toBuffer(), programId.toBuffer()],
-                    new PublicKey(VERIFY_PROGRAM_ID)
+                    [fromUtf8('otter_verify'), pdaSeedAuthority.toBytes(), programId.toBytes()],
+                    new PublicKey(VERIFY_PROGRAM_ID),
                 );
-
-                const pdaAccountInfo = await (accountAnchorProgram.account as any).buildParams.fetch(pda);
-                if (!pdaAccountInfo) {
-                    return null;
+                try {
+                    const pdaAccountInfo = await (accountAnchorProgram.account as any).buildParams.fetch(pda);
+                    if (pdaAccountInfo) {
+                        return pdaAccountInfo;
+                    }
+                } catch (error: unknown) {
+                    // Expected: most signer candidates won't have a matching PDA
+                    Logger.debug('[utils:verified-builds] No matching PDA for signer candidate', {
+                        error,
+                    });
                 }
-                return pdaAccountInfo;
-            } catch (error) {
-                console.error('Error fetching on-chain PDA', error);
-                return null;
             }
+            return null;
         },
-        { suspense: options?.suspense }
+        { suspense: options?.suspense },
     );
 
     if (!osecInfo || pdaError) {
@@ -221,22 +265,24 @@ function useEnrichedOsecInfo({
     const message = TRUSTED_SIGNERS[osecInfo?.signer || '']
         ? 'Verification information provided by a trusted signer.'
         : osecInfo.is_frozen
-        ? 'Verification information provided by the program deployer.'
-        : 'Verification information provided by the program authority.';
+          ? 'Verification information provided by the program deployer.'
+          : 'Verification information provided by the program authority.';
 
+    const { repo_url, signer, is_verified, ...rest } = osecInfo;
     const enrichedOsecInfo: OsecRegistryInfo = {
-        ...osecInfo,
+        ...rest,
+        is_verified,
         message,
-        signer: osecInfo.signer || '',
-        verification_status: osecInfo.is_verified
+        onchain_repo_url: composeOnchainRepoUrl(pdaData.gitUrl, pdaData.commit) ?? '',
+        repo_url: safeRepoUrl(normalizeRepoUrl(repo_url)) ?? '',
+        signer: signer || '',
+        verification_status: is_verified
             ? VerificationStatus.Verified
             : pdaData
-            ? VerificationStatus.PdaUploaded
-            : VerificationStatus.NotVerified,
+              ? VerificationStatus.PdaUploaded
+              : VerificationStatus.NotVerified,
         verify_command: '',
     };
-    enrichedOsecInfo.repo_url = pdaData.gitUrl;
-    enrichedOsecInfo.repo_url += pdaData.commit.length ? '/tree/' + pdaData.commit : '';
     if (pdaData) {
         // Create command from the args of the verified build PDA
         enrichedOsecInfo.verify_command = coalesceCommandFromPda(programId, pdaData);
@@ -268,14 +314,40 @@ function isMainnet(currentCluster: Cluster): boolean {
 }
 
 // Helper function to hash program data
+/**
+ * Compute the solana-verify-style hash of an upgradeable BPF loader buffer account,
+ * matching `solana-verify get-buffer-hash` / `get_binary_hash`: sha256 of the program
+ * bytes with trailing zero padding removed. The RPC's jsonParsed buffer `data` is already
+ * the bytes past the 37-byte buffer header. Returns undefined when `data` is unavailable.
+ */
+export function hashProgramBuffer(buffer: ProgramBufferAccountInfo): string | undefined {
+    if (!buffer.data) return undefined;
+    const bytes = fromBase64(buffer.data[0]);
+    // Same RPC quirk as hashProgramData: when authority is None the parsed `data` carries the
+    // 32-byte pubkey from the (Option) header, so skip it to match solana-verify's raw offset.
+    const offset = buffer.authority === null ? 32 : 0;
+    const data = bytes.slice(offset);
+    let truncatedBytes = 0;
+    while (truncatedBytes < data.length && data[data.length - 1 - truncatedBytes] === 0) {
+        truncatedBytes++;
+    }
+    return toHex(sha256(data.slice(0, data.length - truncatedBytes)));
+}
+
 export function hashProgramData(programData: ProgramDataAccountInfo): string {
-    const buffer = Buffer.from(programData.data[0], 'base64');
+    const buffer = fromBase64(programData.data[0]);
+    // The jsonParsed RPC response includes the 32-byte pubkey field from the raw
+    // account header when authority is None (may contain stale data from a previous
+    // authority). Skip them so the hash matches what solana-verify computes from
+    // raw account data at the fixed 45-byte offset.
+    const offset = programData.authority === null ? 32 : 0;
+    const data = buffer.slice(offset);
     // Truncate null bytes at the end of the buffer
     let truncatedBytes = 0;
-    while (buffer[buffer.length - 1 - truncatedBytes] === 0) {
+    while (truncatedBytes < data.length && data[data.length - 1 - truncatedBytes] === 0) {
         truncatedBytes++;
     }
     // Hash the binary
-    const c = Buffer.from(buffer.slice(0, buffer.length - truncatedBytes));
-    return Buffer.from(sha256(c)).toString('hex');
+    const dataToHash = data.slice(0, data.length - truncatedBytes);
+    return toHex(sha256(dataToHash));
 }

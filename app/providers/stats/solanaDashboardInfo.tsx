@@ -88,6 +88,10 @@ export function dashboardInfoReducer(state: DashboardInfo, action: DashboardInfo
                 })
                 .slice(0, 60);
 
+            if (samples.length === 0) {
+                return state;
+            }
+
             const samplesInHour = samples.length < 60 ? samples.length : 60;
             const avgSlotTime_1h =
                 samples.reduce((sum: number, cur: number) => {
@@ -119,7 +123,7 @@ export function dashboardInfoReducer(state: DashboardInfo, action: DashboardInfo
                 blockTime = Number(
                     BigInt(state.lastBlockTime.blockTime) +
                         (action.data.absoluteSlot - state.lastBlockTime.slot) *
-                            BigInt(Math.floor(state.avgSlotTime_1h * 1000))
+                            BigInt(Math.floor(state.avgSlotTime_1h * 1000)),
                 );
             }
 

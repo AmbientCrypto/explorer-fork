@@ -1,10 +1,9 @@
 'use client';
-
 import ScaledUiAmountMultiplierTooltip from '@components/account/token-extensions/ScaledUiAmountMultiplierTooltip';
 import { Address } from '@components/common/Address';
 import { ErrorCard } from '@components/common/ErrorCard';
-import { Identicon } from '@components/common/Identicon';
 import { LoadingCard } from '@components/common/LoadingCard';
+import { cn } from '@components/shared/utils';
 import {
     TokenInfoWithPubkey,
     useAccountOwnedTokens,
@@ -19,11 +18,15 @@ import { usePathname, useSearchParams } from 'next/navigation';
 import React, { useCallback, useMemo } from 'react';
 import { ChevronDown } from 'react-feather';
 
+import { Button } from '@/app/components/shared/ui/button';
+import { Dropdown, DropdownItem, DropdownMenu, DropdownToggle } from '@/app/components/shared/ui/dropdown';
+import { ProxiedImage } from '@/app/features/metadata';
+import { INITIAL_VISIBLE_COUNT, LOAD_MORE_COUNT } from '@/app/features/token-history/config';
+import { Card, CardFooter, CardHeader, CardTitle } from '@/app/shared/ui/Card';
+import { BaseTable } from '@/app/shared/ui/Table';
 import { normalizeTokenAmount } from '@/app/utils';
 
 type Display = 'summary' | 'detail' | null;
-
-const SMALL_IDENTICON_WIDTH = 16;
 
 const useQueryDisplay = (): Display => {
     const searchParams = useSearchParams();
@@ -40,7 +43,7 @@ export function OwnedTokensCard({ address }: { address: string }) {
     const ownedTokens = useAccountOwnedTokens(address);
     const fetchAccountTokens = useFetchAccountOwnedTokens();
     const refresh = () => fetchAccountTokens(pubkey);
-    const [showDropdown, setDropdown] = React.useState(false);
+    const [visibleCount, setVisibleCount] = React.useState(INITIAL_VISIBLE_COUNT);
     const display = useQueryDisplay();
 
     // Fetch owned tokens
@@ -66,39 +69,48 @@ export function OwnedTokensCard({ address }: { address: string }) {
     }
 
     if (tokens.length > 100) {
-        return <ErrorCard text="Token holdings is not available for accounts with over 100 token accounts" />;
+        return <ErrorCard text="Token holdings are not available for accounts with over 100 token accounts" />;
     }
     const showLogos = tokens.some(t => t.logoURI !== undefined);
 
     return (
-        <>
-            {showDropdown && <div className="dropdown-exit" onClick={() => setDropdown(false)} />}
+        <Card ui="dashkit">
+            <CardHeader ui="dashkit">
+                <CardTitle as="h3" ui="dashkit">
+                    Token Holdings
+                </CardTitle>
+                <DisplayDropdown display={display} />
+            </CardHeader>
 
-            <div className="card">
-                <div className="card-header align-items-center">
-                    <h3 className="card-header-title">Token Holdings</h3>
-                    <DisplayDropdown display={display} toggle={() => setDropdown(show => !show)} show={showDropdown} />
-                </div>
-
-                <div className="table-responsive mb-0">
-                    <table className="table table-sm table-nowrap card-table">
-                        <thead>
-                            <tr>
-                                {showLogos && <th className="text-muted w-1 p-0 text-center">Logo</th>}
-                                {display === 'detail' && <th className="text-muted">Account Address</th>}
-                                <th className="text-muted">Mint Address</th>
-                                <th className="text-muted">{display === 'detail' ? 'Total Balance' : 'Balance'}</th>
-                            </tr>
-                        </thead>
-                        {display === 'detail' ? (
-                            <HoldingsDetail tokens={tokens} showLogos={showLogos} />
-                        ) : (
-                            <HoldingsSummary tokens={tokens} showLogos={showLogos} />
+            <BaseTable ui="dashkit" variant="card" nowrap>
+                <BaseTable.Head>
+                    <BaseTable.Row>
+                        {showLogos && (
+                            <BaseTable.HeaderCell className="w-px p-0 text-center text-dk-gray-700">
+                                Logo
+                            </BaseTable.HeaderCell>
                         )}
-                    </table>
-                </div>
-            </div>
-        </>
+                        {display === 'detail' && (
+                            <BaseTable.HeaderCell className="text-dk-gray-700">Account Address</BaseTable.HeaderCell>
+                        )}
+                        <BaseTable.HeaderCell className="text-dk-gray-700">Mint Address</BaseTable.HeaderCell>
+                        <BaseTable.HeaderCell className="text-dk-gray-700">
+                            {display === 'detail' ? 'Total Balance' : 'Balance'}
+                        </BaseTable.HeaderCell>
+                    </BaseTable.Row>
+                </BaseTable.Head>
+                {display === 'detail' ? (
+                    <HoldingsDetail tokens={tokens} showLogos={showLogos} visibleCount={visibleCount} />
+                ) : (
+                    <HoldingsSummary tokens={tokens} showLogos={showLogos} visibleCount={visibleCount} />
+                )}
+            </BaseTable>
+            <TokensCardFooter
+                tokens={tokens}
+                visibleCount={visibleCount}
+                loadMore={() => setVisibleCount(c => c + LOAD_MORE_COUNT)}
+            />
+        </Card>
     );
 }
 
@@ -112,7 +124,15 @@ type MappedToken = {
     symbol?: string;
 };
 
-function HoldingsDetail({ tokens, showLogos }: { tokens: TokenInfoWithPubkey[]; showLogos: boolean }) {
+function HoldingsDetail({
+    tokens,
+    showLogos,
+    visibleCount,
+}: {
+    tokens: TokenInfoWithPubkey[];
+    showLogos: boolean;
+    visibleCount: number;
+}) {
     const mappedTokens = useMemo(() => {
         const tokensMap = new Map<string, MappedToken>();
 
@@ -142,9 +162,11 @@ function HoldingsDetail({ tokens, showLogos }: { tokens: TokenInfoWithPubkey[]; 
         return tokensMap;
     }, [tokens]);
 
+    const visibleTokens = Array.from(mappedTokens.entries()).slice(0, visibleCount);
+
     return (
-        <tbody className="list">
-            {Array.from(mappedTokens.entries()).map(([mintAddress, token]) => (
+        <tbody>
+            {visibleTokens.map(([mintAddress, token]) => (
                 <TokenRow
                     key={mintAddress}
                     mintAddress={mintAddress}
@@ -157,30 +179,43 @@ function HoldingsDetail({ tokens, showLogos }: { tokens: TokenInfoWithPubkey[]; 
     );
 }
 
-function HoldingsSummary({ tokens, showLogos }: { tokens: TokenInfoWithPubkey[]; showLogos: boolean }) {
-    const mappedTokens = new Map<string, MappedToken>();
-    for (const { info: token, logoURI, symbol, name } of tokens) {
-        const mintAddress = token.mint.toBase58();
-        const totalByMint = mappedTokens.get(mintAddress)?.amount;
+function HoldingsSummary({
+    tokens,
+    showLogos,
+    visibleCount,
+}: {
+    tokens: TokenInfoWithPubkey[];
+    showLogos: boolean;
+    visibleCount: number;
+}) {
+    const mappedTokens = useMemo(() => {
+        const tokensMap = new Map<string, MappedToken>();
+        for (const { info: token, logoURI, symbol, name } of tokens) {
+            const mintAddress = token.mint.toBase58();
+            const totalByMint = tokensMap.get(mintAddress)?.amount;
 
-        let amount = token.tokenAmount.uiAmountString;
-        if (totalByMint !== undefined) {
-            amount = new BigNumber(totalByMint).plus(token.tokenAmount.uiAmountString).toString();
+            let amount = token.tokenAmount.uiAmountString;
+            if (totalByMint !== undefined) {
+                amount = new BigNumber(totalByMint).plus(token.tokenAmount.uiAmountString).toString();
+            }
+
+            tokensMap.set(mintAddress, {
+                amount,
+                decimals: token.tokenAmount.decimals,
+                logoURI,
+                name,
+                rawAmount: token.tokenAmount.amount,
+                symbol,
+            });
         }
+        return tokensMap;
+    }, [tokens]);
 
-        mappedTokens.set(mintAddress, {
-            amount,
-            decimals: token.tokenAmount.decimals,
-            logoURI,
-            name,
-            rawAmount: token.tokenAmount.amount,
-            symbol,
-        });
-    }
+    const visibleTokens = Array.from(mappedTokens.entries()).slice(0, visibleCount);
 
     return (
-        <tbody className="list">
-            {Array.from(mappedTokens.entries()).map(([mintAddress, token]) => (
+        <tbody>
+            {visibleTokens.map(([mintAddress, token]) => (
                 <TokenRow
                     key={mintAddress}
                     mintAddress={mintAddress}
@@ -206,32 +241,23 @@ function TokenRow({ mintAddress, token, showLogo, showAccountAddress }: TokenRow
     return (
         <tr>
             {showLogo && (
-                <td className="w-1 p-0 text-center">
-                    {token.logoURI ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                            alt="token icon"
-                            className="token-icon rounded-circle border border-4 border-gray-dark"
-                            height={16}
-                            src={token.logoURI}
-                            width={16}
-                        />
-                    ) : (
-                        <Identicon
-                            address={mintAddress}
-                            className="avatar-img identicon-wrapper identicon-wrapper-small"
-                            style={{ width: SMALL_IDENTICON_WIDTH }}
-                        />
-                    )}
+                <td className="w-px p-0 text-center">
+                    <ProxiedImage
+                        alt="Token icon"
+                        className="h-6 w-6 rounded-full border-4 border-solid border-dk-gray-700-dark"
+                        height={16}
+                        uri={token.logoURI}
+                        width={16}
+                    />
                 </td>
             )}
             {showAccountAddress && token.pubkey && (
                 <td>
-                    <Address pubkey={new PublicKey(token.pubkey)} link tokenLabelInfo={token} useMetadata />
+                    <Address pubkey={new PublicKey(token.pubkey)} link />
                 </td>
             )}
             <td>
-                <Address pubkey={new PublicKey(mintAddress)} link tokenLabelInfo={token} useMetadata />
+                <Address pubkey={new PublicKey(mintAddress)} link tokenLabelInfo={token} />
             </td>
             <td>
                 {token.amount} {token.symbol}
@@ -244,13 +270,39 @@ function TokenRow({ mintAddress, token, showLogo, showAccountAddress }: TokenRow
     );
 }
 
+function TokensCardFooter({
+    tokens,
+    visibleCount,
+    loadMore,
+}: {
+    tokens: TokenInfoWithPubkey[];
+    visibleCount: number;
+    loadMore: () => void;
+}) {
+    // Count unique mints to get actual token count (not account count)
+    const totalCount = useMemo(() => {
+        const uniqueMints = new Set(tokens.map(t => t.info.mint.toBase58()));
+        return uniqueMints.size;
+    }, [tokens]);
+
+    if (visibleCount >= totalCount) {
+        return null;
+    }
+
+    return (
+        <CardFooter ui="dashkit">
+            <Button ui="dashkit" variant="primary" className="w-full" onClick={loadMore}>
+                Load More ({visibleCount} of {totalCount})
+            </Button>
+        </CardFooter>
+    );
+}
+
 type DropdownProps = {
     display: Display;
-    toggle: () => void;
-    show: boolean;
 };
 
-const DisplayDropdown = ({ display, toggle, show }: DropdownProps) => {
+const DisplayDropdown = ({ display }: DropdownProps) => {
     const currentSearchParams = useSearchParams();
     const currentPath = usePathname();
     const buildLocation = useCallback(
@@ -264,29 +316,32 @@ const DisplayDropdown = ({ display, toggle, show }: DropdownProps) => {
             const nextQueryString = params.toString();
             return `${currentPath}${nextQueryString ? `?${nextQueryString}` : ''}`;
         },
-        [currentPath, currentSearchParams]
+        [currentPath, currentSearchParams],
     );
 
     const DISPLAY_OPTIONS: Display[] = [null, 'detail'];
     return (
-        <div className="dropdown">
-            <button className="btn btn-white btn-sm" type="button" onClick={toggle}>
-                {display === 'detail' ? 'Detailed' : 'Summary'} <ChevronDown size={15} className="align-text-top" />
-            </button>
-            <div className={`dropdown-menu-end dropdown-menu${show ? ' show' : ''}`}>
+        <Dropdown>
+            <DropdownToggle asChild>
+                <Button ui="dashkit" variant="white" size="sm" type="button">
+                    {display === 'detail' ? 'Detailed' : 'Summary'} <ChevronDown size={15} className="align-text-top" />
+                </Button>
+            </DropdownToggle>
+            <DropdownMenu align="end">
                 {DISPLAY_OPTIONS.map(displayOption => {
                     return (
-                        <Link
+                        <DropdownItem
+                            asChild
                             key={displayOption || 'null'}
-                            href={buildLocation(displayOption)}
-                            className={`dropdown-item${displayOption === display ? ' active' : ''}`}
-                            onClick={toggle}
+                            className={cn(displayOption === display && 'active')}
                         >
-                            {displayOption === 'detail' ? 'Detailed' : 'Summary'}
-                        </Link>
+                            <Link href={buildLocation(displayOption)}>
+                                {displayOption === 'detail' ? 'Detailed' : 'Summary'}
+                            </Link>
+                        </DropdownItem>
                     );
                 })}
-            </div>
-        </div>
+            </DropdownMenu>
+        </Dropdown>
     );
 };

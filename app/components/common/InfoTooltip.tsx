@@ -1,39 +1,39 @@
-import React, { ReactNode, useState } from 'react';
+import { cn } from '@components/shared/utils';
+import { ReactNode } from 'react';
 import { HelpCircle } from 'react-feather';
 
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/app/components/shared/ui/tooltip';
+
 type Props = {
-    text: string;
+    text?: string;
     children?: ReactNode;
     bottom?: boolean;
     right?: boolean;
+    withHelpIcon?: boolean;
+    className?: string;
 };
 
-type State = 'hide' | 'show';
+export function InfoTooltip({ bottom, right, text, children, withHelpIcon = true, className }: Props) {
+    if (!text) {
+        return <>{children}</>;
+    }
 
-function Popover({ state, bottom, right, text }: { state: State; bottom?: boolean; right?: boolean; text: string }) {
-    if (state === 'hide') return null;
+    // `bottom`/`right` props are legacy Bootstrap-popover positions; map to Radix `side`.
+    const side = bottom ? 'bottom' : right ? 'right' : 'top';
+    // Visual alignment of the trigger flex row mirrored the popover position.
+    const justify = right ? 'justify-end' : 'justify-start';
+
     return (
-        <div className={`popover bs-popover-${bottom ? 'bottom' : 'top'}${right ? ' right' : ''} show`}>
-            <div className={`arrow${right ? ' right' : ''}`} />
-            <div className="popover-body">{text}</div>
-        </div>
-    );
-}
-
-export function InfoTooltip({ bottom, right, text, children }: Props) {
-    const [state, setState] = useState<State>('hide');
-
-    const justify = right ? 'end' : 'start';
-    return (
-        <div
-            className="popover-container w-100"
-            onMouseOver={() => setState('show')}
-            onMouseOut={() => setState('hide')}
-        >
-            <div className={`d-flex align-items-center justify-content-${justify}`}>
-                {children} <HelpCircle className="ms-2" size={13} />
-            </div>
-            <Popover bottom={bottom} right={right} state={state} text={text} />
-        </div>
+        <Tooltip>
+            <TooltipTrigger asChild>
+                <div className={cn('flex w-full items-center', justify, className)}>
+                    {children}
+                    {withHelpIcon && <HelpCircle className="ml-1.5" size={13} />}
+                </div>
+            </TooltipTrigger>
+            <TooltipContent side={side} className="max-w-80">
+                {text}
+            </TooltipContent>
+        </Tooltip>
     );
 }

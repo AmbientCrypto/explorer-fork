@@ -1,8 +1,10 @@
 import { Address } from '@components/common/Address';
 import { Copyable } from '@components/common/Copyable';
 import { SolBalance } from '@components/common/SolBalance';
-import { ParsedInstruction, SignatureResult, SystemProgram } from '@solana/web3.js';
+import { ParsedInstruction, SignatureResult, SystemProgram, TransactionInstruction } from '@solana/web3.js';
 import React from 'react';
+
+import { BaseTable } from '@/app/shared/ui/Table';
 
 import { InstructionCard } from '../InstructionCard';
 import { CreateAccountWithSeedInfo } from './types';
@@ -14,8 +16,10 @@ export function CreateWithSeedDetailsCard(props: {
     info: CreateAccountWithSeedInfo;
     innerCards?: JSX.Element[];
     childIndex?: number;
+    // Raw instruction for displaying accounts and hex data in raw mode (used by inspector)
+    raw?: TransactionInstruction;
 }) {
-    const { ix, index, result, info, innerCards, childIndex } = props;
+    const { ix, index, result, info, innerCards, childIndex, raw } = props;
 
     return (
         <InstructionCard
@@ -25,62 +29,63 @@ export function CreateWithSeedDetailsCard(props: {
             title="System Program: Create Account w/ Seed"
             innerCards={innerCards}
             childIndex={childIndex}
+            raw={raw}
         >
-            <tr>
-                <td>Program</td>
-                <td className="text-lg-end">
+            <BaseTable.Row>
+                <BaseTable.Cell>Program</BaseTable.Cell>
+                <BaseTable.Cell className="text-right">
                     <Address pubkey={SystemProgram.programId} alignRight link />
-                </td>
-            </tr>
+                </BaseTable.Cell>
+            </BaseTable.Row>
 
-            <tr>
-                <td>From Address</td>
-                <td className="text-lg-end">
+            <BaseTable.Row>
+                <BaseTable.Cell>From Address</BaseTable.Cell>
+                <BaseTable.Cell className="text-right">
                     <Address pubkey={info.source} alignRight link />
-                </td>
-            </tr>
+                </BaseTable.Cell>
+            </BaseTable.Row>
 
-            <tr>
-                <td>New Address</td>
-                <td className="text-lg-end">
+            <BaseTable.Row>
+                <BaseTable.Cell>New Address</BaseTable.Cell>
+                <BaseTable.Cell className="text-right">
                     <Address pubkey={info.newAccount} alignRight link />
-                </td>
-            </tr>
+                </BaseTable.Cell>
+            </BaseTable.Row>
 
-            <tr>
-                <td>Base Address</td>
-                <td className="text-lg-end">
+            <BaseTable.Row>
+                <BaseTable.Cell>Base Address</BaseTable.Cell>
+                <BaseTable.Cell className="text-right">
                     <Address pubkey={info.base} alignRight link />
-                </td>
-            </tr>
+                </BaseTable.Cell>
+            </BaseTable.Row>
 
-            <tr>
-                <td>Seed</td>
-                <td className="text-lg-end">
+            <BaseTable.Row>
+                <BaseTable.Cell>Seed</BaseTable.Cell>
+                <BaseTable.Cell className="text-right">
                     <Copyable text={info.seed}>
                         <code>{info.seed}</code>
                     </Copyable>
-                </td>
-            </tr>
+                </BaseTable.Cell>
+            </BaseTable.Row>
 
-            <tr>
-                <td>Transfer Amount (AMB)</td>
-                <td className="text-lg-end">
+            <BaseTable.Row>
+                <BaseTable.Cell>Transfer Amount (SOL)</BaseTable.Cell>
+                <BaseTable.Cell className="text-right">
                     <SolBalance lamports={info.lamports} />
-                </td>
-            </tr>
+                </BaseTable.Cell>
+            </BaseTable.Row>
 
-            <tr>
-                <td>Allocated Data Size</td>
-                <td className="text-lg-end">{info.space} byte(s)</td>
-            </tr>
+            <BaseTable.Row>
+                <BaseTable.Cell>Allocated Data Size</BaseTable.Cell>
+                <BaseTable.Cell className="text-right">{info.space} byte(s)</BaseTable.Cell>
+            </BaseTable.Row>
 
-            <tr>
-                <td>Assigned Program Id</td>
-                <td className="text-lg-end">
+            <BaseTable.Row>
+                <BaseTable.Cell>Assigned Program Id</BaseTable.Cell>
+                <BaseTable.Cell className="text-right">
                     <Address pubkey={info.owner} alignRight link />
-                </td>
-            </tr>
+                </BaseTable.Cell>
+            </BaseTable.Row>
         </InstructionCard>
     );
 }

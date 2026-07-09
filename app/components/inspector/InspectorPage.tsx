@@ -4,21 +4,35 @@ import { ErrorCard } from '@components/common/ErrorCard';
 import { LoadingCard } from '@components/common/LoadingCard';
 import { SolBalance } from '@components/common/SolBalance';
 import { TableCardBody } from '@components/common/TableCardBody';
+import { SimulatorCard } from '@features/instruction-simulation';
 import { useFetchAccountInfo } from '@providers/accounts';
 import { FetchStatus } from '@providers/cache';
 import { useFetchRawTransaction, useRawTransactionDetails } from '@providers/transactions/raw';
 import usePrevious from '@react-hook/previous';
-import { Connection, MessageV0, PACKET_DATA_SIZE, PublicKey, VersionedMessage } from '@solana/web3.js';
-import { generated, PROGRAM_ADDRESS as SQUADS_V4_PROGRAM_ADDRESS } from '@sqds/multisig';
-const { VaultTransaction } = generated;
-
-import { useClusterPath } from '@utils/url';
+import {
+    type CompiledInnerInstruction,
+    Connection,
+    MessageV0,
+    PACKET_DATA_SIZE,
+    PublicKey,
+    VersionedMessage,
+} from '@solana/web3.js';
+import { generated, getBatchTransactionPda, PROGRAM_ADDRESS as SQUADS_V4_PROGRAM_ADDRESS } from '@sqds/multisig';
+import { ClusterStatus } from '@utils/cluster';
 import bs58 from 'bs58';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import React from 'react';
 import useSWR from 'swr';
 
+import { Badge } from '@/app/components/shared/ui/badge';
+import { Button } from '@/app/components/shared/ui/button';
 import { useCluster } from '@/app/providers/cluster';
+import { DownloadDropdown } from '@/app/shared/components/DownloadDropdown';
+import { toBase64 } from '@/app/shared/lib/bytes';
+import { Card, CardHeader, CardTitle } from '@/app/shared/ui/Card';
+import { PageContainer } from '@/app/shared/ui/page-container/PageContainer';
+import { BaseTable } from '@/app/shared/ui/Table';
+import { useClusterPath } from '@/app/utils/url';
 
 import { AccountsCard } from './AccountsCard';
 import { AddressTableLookupsCard } from './AddressTableLookupsCard';
@@ -26,12 +40,43 @@ import { AddressWithContext, createFeePayerValidator } from './AddressWithContex
 import { InstructionsSection } from './InstructionsSection';
 import { MIN_MESSAGE_LENGTH, RawInput } from './RawInputCard';
 import { TransactionSignatures } from './SignaturesCard';
-import { SimulatorCard } from './SimulatorCard';
+
+const { Batch, VaultBatchTransaction, VaultTransaction, batchDiscriminator } = generated;
+
+// Convert a Squads VaultTransactionMessage (shared by VaultTransaction and the inner
+// transactions of a Batch) into a web3.js VersionedMessage the inspector can render.
+export function vaultMessageToVersionedMessage(message: typeof VaultTransaction.prototype.message): VersionedMessage {
+    return new MessageV0({
+        addressTableLookups: message.addressTableLookups.map(x => ({
+            ...x,
+            readonlyIndexes: Array.from(x.readonlyIndexes),
+            writableIndexes: Array.from(x.writableIndexes),
+        })),
+        compiledInstructions: message.instructions.map(instruction => ({
+            accountKeyIndexes: Array.from(instruction.accountIndexes),
+            data: instruction.data,
+            programIdIndex: instruction.programIdIndex,
+        })),
+        header: {
+            numReadonlySignedAccounts: message.numSigners - message.numWritableSigners,
+            numReadonlyUnsignedAccounts:
+                message.accountKeys.length - message.numSigners - message.numWritableNonSigners,
+            numRequiredSignatures: message.numSigners,
+        },
+        recentBlockhash: bs58.encode(Uint8Array.from(new Array(32).fill(0))),
+        staticAccountKeys: message.accountKeys,
+    });
+}
 
 export type TransactionData = {
     rawMessage: Uint8Array;
     message: VersionedMessage;
-    signatures?: (string | null)[];
+    signatures?: (string | undefined)[];
+    accountBalances?: {
+        preBalances: number[];
+        postBalances: number[];
+    };
+    compiledInnerInstructions?: CompiledInnerInstruction[];
 };
 
 export type SquadsProposalAccountData = {
@@ -51,17 +96,17 @@ function decodeParam(params: URLSearchParams, name: string): string | boolean {
     if (param === null) return false;
     try {
         return decodeURIComponent(param);
-    } catch (err) {
+    } catch (_err) {
         return true;
     }
 }
 
 // Decode a signatures param and throw an error on failure
-function decodeSignatures(signaturesParam: string): (string | null)[] {
+function decodeSignatures(signaturesParam: string): (string | undefined)[] {
     let signatures;
     try {
         signatures = JSON.parse(signaturesParam);
-    } catch (err) {
+    } catch (_err) {
         throw new Error('Signatures param is not valid JSON');
     }
 
@@ -69,10 +114,10 @@ function decodeSignatures(signaturesParam: string): (string | null)[] {
         throw new Error('Signatures param is not a JSON array');
     }
 
-    const validSignatures: (string | null)[] = [];
+    const validSignatures: (string | undefined)[] = [];
     for (const signature of signatures) {
-        if (signature === null) {
-            validSignatures.push(signature);
+        if (signature === null || signature === undefined) {
+            validSignatures.push(undefined);
             continue;
         }
 
@@ -83,7 +128,7 @@ function decodeSignatures(signaturesParam: string): (string | null)[] {
         try {
             bs58.decode(signature);
             validSignatures.push(signature);
-        } catch (err) {
+        } catch (_err) {
             throw new Error('Signature is not valid base58');
         }
     }
@@ -95,7 +140,7 @@ function decodeSignatures(signaturesParam: string): (string | null)[] {
 // URL params are returned as a string that will prefill the transaction
 // message input field for debugging. Returns a tuple of [result, shouldRefreshUrl]
 function decodeUrlParams(
-    params: URLSearchParams
+    params: URLSearchParams,
 ): [TransactionData | string | SquadsProposalAccountData, URLSearchParams, boolean] {
     const messageParam = decodeParam(params, 'message');
     const signaturesParam = decodeParam(params, 'signatures');
@@ -113,7 +158,7 @@ function decodeUrlParams(
             // Validate that it's a valid public key
             new PublicKey(squadsTxParam);
             return [{ account: squadsTxParam }, params, refreshUrl];
-        } catch (err) {
+        } catch (_err) {
             params.delete('squadsTx');
             refreshUrl = true;
         }
@@ -128,11 +173,11 @@ function decodeUrlParams(
         return ['', params, refreshUrl];
     }
 
-    let signatures: (string | null)[] | undefined = undefined;
+    let signatures: (string | undefined)[] | undefined = undefined;
     if (typeof signaturesParam === 'string') {
         try {
             signatures = decodeSignatures(signaturesParam);
-        } catch (err) {
+        } catch (_err) {
             params.delete('signatures');
             refreshUrl = true;
         }
@@ -152,7 +197,7 @@ function decodeUrlParams(
             signatures,
         };
         return [data, params, refreshUrl];
-    } catch (err) {
+    } catch (_err) {
         params.delete('message');
         refreshUrl = true;
         return [messageParam, params, true];
@@ -161,32 +206,65 @@ function decodeUrlParams(
 
 function SquadsProposalInspectorCard({ account, onClear }: { account: string; onClear: () => void }) {
     const { url } = useCluster();
+    const [selected, setSelected] = React.useState(0);
 
-    const fetcher = React.useCallback(async () => {
+    // Reset the selected inner transaction whenever a different account is inspected.
+    React.useEffect(() => {
+        setSelected(0);
+    }, [account]);
+
+    const fetcher = React.useCallback(async (): Promise<(VersionedMessage | undefined)[]> => {
         const connection = new Connection(url);
-        try {
-            // First check if the account exists and is owned by the Squads program
-            const accountInfo = await connection.getAccountInfo(new PublicKey(account), 'confirmed');
+        const pubkey = new PublicKey(account);
 
-            if (!accountInfo) {
-                throw new Error('Account not found');
-            }
-
-            // Check if the account is owned by the Squads program
-            const isSquadsAccount = accountInfo.owner.toString() === SQUADS_V4_PROGRAM_ADDRESS.toString();
-
-            if (!isSquadsAccount) {
-                throw new Error(`Account ${account} is not a valid Squads transaction account`);
-            }
-
-            return await VaultTransaction.fromAccountAddress(connection, new PublicKey(account), 'confirmed');
-        } catch (err) {
-            throw err instanceof Error ? err : new Error('Failed to fetch account data');
+        // First check if the account exists and is owned by the Squads program
+        const accountInfo = await connection.getAccountInfo(pubkey, 'confirmed');
+        if (!accountInfo) {
+            throw new Error('Account not found');
         }
+        if (accountInfo.owner.toString() !== SQUADS_V4_PROGRAM_ADDRESS.toString()) {
+            throw new Error(`Account ${account} is not a valid Squads transaction account`);
+        }
+
+        // The account discriminator (first 8 bytes) distinguishes a Batch — which holds
+        // many inner transactions — from a single VaultTransaction.
+        const discriminator = accountInfo.data.subarray(0, 8);
+        const isBatch = batchDiscriminator.every((byte, i) => byte === discriminator[i]);
+
+        if (isBatch) {
+            const batch = await Batch.fromAccountAddress(connection, pubkey, 'confirmed');
+            const batchIndex = BigInt(batch.index.toString());
+            // Inner VaultBatchTransactions are 1-indexed PDAs derived from the multisig + batch index.
+            // Each fetch is isolated so one unavailable transaction (e.g. a PDA closed after
+            // execution) doesn't sink the whole batch — failed slots become undefined and render
+            // an "unavailable" notice below.
+            const results = await Promise.all(
+                Array.from({ length: batch.size }, async (_unused, i) => {
+                    try {
+                        const [pda] = getBatchTransactionPda({
+                            batchIndex,
+                            multisigPda: batch.multisig,
+                            transactionIndex: i + 1,
+                        });
+                        const vbt = await VaultBatchTransaction.fromAccountAddress(connection, pda, 'confirmed');
+                        return vaultMessageToVersionedMessage(vbt.message);
+                    } catch {
+                        return undefined;
+                    }
+                }),
+            );
+            if (results.every(message => message === undefined)) {
+                throw new Error('None of the batch transactions could be loaded');
+            }
+            return results;
+        }
+
+        const vaultTransaction = await VaultTransaction.fromAccountAddress(connection, pubkey, 'confirmed');
+        return [vaultMessageToVersionedMessage(vaultTransaction.message)];
     }, [account, url]);
 
     const {
-        data: vaultTransaction,
+        data: messages,
         error,
         isLoading,
     } = useSWR(['squads-proposal', account, url], fetcher, {
@@ -199,56 +277,57 @@ function SquadsProposalInspectorCard({ account, onClear }: { account: string; on
         return <LoadingCard message="Loading Squads transaction..." />;
     }
 
-    if (error || !vaultTransaction) {
+    if (error || !messages || messages.length === 0) {
         return (
-            <ErrorCard text={`Error loading vault transaction: ${error?.message}`} retry={onClear} retryText="Clear" />
+            <ErrorCard
+                text={`Error loading Squads transaction: ${error?.message ?? 'no transactions found'}`}
+                retry={onClear}
+                retryText="Clear"
+            />
         );
     }
 
-    // Convert VaultTransactionMessage to a format compatible with Message
-    const convertVaultTransactionToMessage = (vaultTx: typeof VaultTransaction.prototype): VersionedMessage => {
-        const { message } = vaultTx;
-        const accountKeys = message.accountKeys;
-
-        // Create a standard Message object with the necessary fields
-        const solanaMessage = new MessageV0({
-            addressTableLookups: message.addressTableLookups.map(x => ({
-                ...x,
-                readonlyIndexes: Array.from(x.readonlyIndexes),
-                writableIndexes: Array.from(x.writableIndexes),
-            })),
-            compiledInstructions: message.instructions.map(instruction => ({
-                accountKeyIndexes: Array.from(instruction.accountIndexes),
-                data: Buffer.from(instruction.data),
-                programIdIndex: instruction.programIdIndex,
-            })),
-            header: {
-                numReadonlySignedAccounts: message.numSigners - message.numWritableSigners,
-                numReadonlyUnsignedAccounts:
-                    message.accountKeys.length - message.numSigners - message.numWritableNonSigners,
-                numRequiredSignatures: message.numSigners,
-            },
-            recentBlockhash: bs58.encode(Uint8Array.from(new Array(32).fill(0))),
-            staticAccountKeys: accountKeys,
-        });
-
-        return solanaMessage;
-    };
-
-    // Create a serialized version of the message for rawMessage
-    const convertedMessage = convertVaultTransactionToMessage(vaultTransaction);
-    const serializedMessage = convertedMessage.serialize();
+    const activeIndex = Math.min(selected, messages.length - 1);
+    const message = messages[activeIndex];
 
     return (
-        <LoadedView
-            transaction={{
-                message: convertedMessage,
-                rawMessage: serializedMessage,
-                signatures: undefined,
-            }}
-            onClear={onClear}
-            showTokenBalanceChanges={false}
-        />
+        <>
+            {messages.length > 1 && (
+                <Card ui="dashkit" className="mb-4">
+                    <CardHeader ui="dashkit" className="flex-wrap gap-2">
+                        <CardTitle as="h3" ui="dashkit">
+                            Batch · {messages.length} transactions
+                        </CardTitle>
+                        <div className="flex flex-wrap gap-2">
+                            {messages.map((_unused, i) => (
+                                <Button
+                                    key={i}
+                                    ui="dashkit"
+                                    size="sm"
+                                    variant={i === activeIndex ? 'primary' : 'white'}
+                                    onClick={() => setSelected(i)}
+                                >
+                                    {i + 1}
+                                </Button>
+                            ))}
+                        </div>
+                    </CardHeader>
+                </Card>
+            )}
+            {message ? (
+                <LoadedView
+                    transaction={{
+                        message,
+                        rawMessage: message.serialize(),
+                        signatures: undefined,
+                    }}
+                    onClear={onClear}
+                    showTokenBalanceChanges={false}
+                />
+            ) : (
+                <ErrorCard text="This batch transaction is unavailable — its account may have been closed after execution." />
+            )}
+        </>
     );
 }
 
@@ -263,6 +342,7 @@ export function TransactionInspectorPage({
     const currentSearchParams = useSearchParams();
     const currentPathname = usePathname();
     const router = useRouter();
+    const inspectorPath = useClusterPath({ pathname: '/tx/inspector' });
     const [paramString, setParamString] = React.useState<string>();
 
     // Sync message with url search params
@@ -271,14 +351,22 @@ export function TransactionInspectorPage({
         if (signature) return;
         if (inspectorData && inspectorData !== prevInspectorData) {
             if (isSquadsProposalAccountData(inspectorData)) {
-                // Handle Squads proposal URL params
-                const nextQueryParams = new URLSearchParams(currentSearchParams?.toString());
-                nextQueryParams.set('squadsTx', inspectorData.account);
-                // Remove any other transaction params that might exist
-                nextQueryParams.delete('message');
-                nextQueryParams.delete('signatures');
-                const queryString = nextQueryParams.toString();
-                router.replace(`${currentPathname}?${queryString}`);
+                // Only rewrite the URL when it doesn't already encode this squadsTx. Without this
+                // guard, router.replace to an identical URL yields a fresh searchParams ref, which
+                // re-runs the decode effect → setInspectorData(new object) → replace → infinite loop.
+                // (Mirrors the guard the raw-message branch below already applies.)
+                const alreadyInSync =
+                    currentSearchParams?.get('squadsTx') === inspectorData.account &&
+                    !currentSearchParams?.get('message') &&
+                    !currentSearchParams?.get('signatures');
+                if (!alreadyInSync) {
+                    const nextQueryParams = new URLSearchParams(currentSearchParams?.toString());
+                    nextQueryParams.set('squadsTx', inspectorData.account);
+                    // Remove any other transaction params that might exist
+                    nextQueryParams.delete('message');
+                    nextQueryParams.delete('signatures');
+                    router.replace(`${currentPathname}?${nextQueryParams.toString()}`);
+                }
                 return;
             }
 
@@ -292,7 +380,7 @@ export function TransactionInspectorPage({
                 }
             }
 
-            const base64 = btoa(String.fromCharCode.apply(null, Array.from(inspectorData.rawMessage)));
+            const base64 = toBase64(inspectorData.rawMessage);
             const newParam = encodeURIComponent(base64);
             if (currentSearchParams.get('message') !== newParam) {
                 nextQueryParams ||= new URLSearchParams(currentSearchParams?.toString());
@@ -305,7 +393,7 @@ export function TransactionInspectorPage({
         }
     }, [currentPathname, currentSearchParams, prevInspectorData, router, signature, inspectorData]);
 
-    const reset = React.useCallback(() => {
+    const resetParams = React.useCallback(() => {
         const nextQueryParams = new URLSearchParams(currentSearchParams?.toString());
         nextQueryParams.delete('message');
         nextQueryParams.delete('signatures');
@@ -313,6 +401,10 @@ export function TransactionInspectorPage({
         const queryString = nextQueryParams?.toString();
         router.push(`${currentPathname}${queryString ? `?${queryString}` : ''}`);
     }, [currentPathname, currentSearchParams, router]);
+
+    const resetToInspectorPage = React.useCallback(() => {
+        router.push(inspectorPath);
+    }, [inspectorPath, router]);
 
     // Decode the message url param whenever it changes
     React.useEffect(() => {
@@ -332,33 +424,38 @@ export function TransactionInspectorPage({
     }, [currentPathname, currentSearchParams, router]);
 
     return (
-        <div className="container mt-4">
-            <div className="header">
-                <div className="header-body">
-                    <h2 className="header-title">Transaction Inspector</h2>
+        <PageContainer className="mt-6">
+            <div className="mb-8">
+                <div className="border-0 border-b border-solid border-dk-gray-700-dark py-6">
+                    <h2 className="mb-0">Transaction Inspector</h2>
                 </div>
             </div>
             {signature ? (
-                <PermalinkView signature={signature} reset={reset} showTokenBalanceChanges={showTokenBalanceChanges} />
+                <PermalinkView
+                    signature={signature}
+                    reset={resetToInspectorPage}
+                    showTokenBalanceChanges={showTokenBalanceChanges}
+                />
             ) : inspectorData ? (
                 isSquadsProposalAccountData(inspectorData) ? (
-                    <SquadsProposalInspectorCard account={inspectorData.account} onClear={reset} />
+                    <SquadsProposalInspectorCard account={inspectorData.account} onClear={resetParams} />
                 ) : (
                     <LoadedView
                         transaction={inspectorData}
-                        onClear={reset}
+                        onClear={resetParams}
                         showTokenBalanceChanges={showTokenBalanceChanges}
                     />
                 )
             ) : (
                 <RawInput value={paramString} setTransactionData={setInspectorData} />
             )}
-        </div>
+        </PageContainer>
     );
 }
 
-function PermalinkView({
+export function PermalinkView({
     signature,
+    reset,
     showTokenBalanceChanges,
 }: {
     signature: string;
@@ -367,30 +464,38 @@ function PermalinkView({
 }) {
     const details = useRawTransactionDetails(signature);
     const fetchTransaction = useFetchRawTransaction();
-    const refreshTransaction = () => fetchTransaction(signature);
+    const { status } = useCluster();
     const transaction = details?.data?.raw;
-    const inspectorPath = useClusterPath({ pathname: '/tx/inspector' });
-    const router = useRouter();
-    const reset = React.useCallback(() => {
-        router.push(inspectorPath);
-    }, [inspectorPath, router]);
 
-    // Fetch details on load
+    // Fetch on load at 'confirmed' (matches providers/transactions/parsed.tsx) so freshly-confirmed txs resolve fast.
+    const fetchConfirmedTx = React.useCallback(() => {
+        fetchTransaction(signature, 'confirmed');
+    }, [fetchTransaction, signature]);
+
+    // Wait for the cluster to connect before fetching — otherwise the first render fetches against the
+    // default (mainnet) URL before the ?cluster= param settles, wasting a request on the wrong cluster.
     React.useEffect(() => {
-        if (!details) fetchTransaction(signature);
-    }, [signature, details, fetchTransaction]);
+        if (!transaction && status === ClusterStatus.Connected) {
+            fetchConfirmedTx();
+        }
+    }, [transaction, fetchConfirmedTx, status]);
 
     if (!details || details.status === FetchStatus.Fetching) {
         return <LoadingCard />;
     } else if (details.status === FetchStatus.FetchFailed) {
-        return <ErrorCard retry={refreshTransaction} text="Failed to fetch transaction" />;
+        return <ErrorCard retry={fetchConfirmedTx} text="Failed to fetch transaction" />;
     } else if (!transaction) {
         return <ErrorCard text="Transaction was not found" retry={reset} retryText="Reset" />;
     }
 
-    const { message, signatures } = transaction;
-    const tx = { message, rawMessage: message.serialize(), signatures };
-
+    const { message, signatures, meta } = transaction;
+    const tx = {
+        accountBalances: meta,
+        compiledInnerInstructions: meta?.innerInstructions,
+        message,
+        rawMessage: message.serialize(),
+        signatures,
+    };
     return <LoadedView transaction={tx} onClear={reset} showTokenBalanceChanges={showTokenBalanceChanges} />;
 }
 
@@ -403,7 +508,7 @@ function LoadedView({
     onClear: () => void;
     showTokenBalanceChanges: boolean;
 }) {
-    const { message, rawMessage, signatures } = transaction;
+    const { message, rawMessage, signatures, accountBalances, compiledInnerInstructions } = transaction;
 
     const fetchAccountInfo = useFetchAccountInfo();
     React.useEffect(() => {
@@ -415,11 +520,15 @@ function LoadedView({
     return (
         <>
             <OverviewCard message={message} raw={rawMessage} onClear={onClear} />
-            <SimulatorCard message={message} showTokenBalanceChanges={showTokenBalanceChanges} />
+            <SimulatorCard
+                message={message}
+                showTokenBalanceChanges={showTokenBalanceChanges}
+                accountBalances={accountBalances}
+            />
             {signatures && <TransactionSignatures message={message} signatures={signatures} rawMessage={rawMessage} />}
             <AccountsCard message={message} />
             <AddressTableLookupsCard message={message} />
-            <InstructionsSection message={message} />
+            <InstructionsSection message={message} compiledInnerInstructions={compiledInnerInstructions} />
         </>
     );
 }
@@ -428,7 +537,17 @@ const DEFAULT_FEES = {
     lamportsPerSignature: 5000,
 };
 
-function OverviewCard({ message, raw, onClear }: { message: VersionedMessage; raw: Uint8Array; onClear: () => void }) {
+function OverviewCard({
+    message,
+    raw,
+    onClear,
+    signature,
+}: {
+    message: VersionedMessage;
+    raw: Uint8Array;
+    onClear: () => void;
+    signature?: string;
+}) {
     const fee = message.header.numRequiredSignatures * DEFAULT_FEES.lamportsPerSignature;
     const feePayerValidator = createFeePayerValidator(fee);
 
@@ -439,48 +558,59 @@ function OverviewCard({ message, raw, onClear }: { message: VersionedMessage; ra
 
     return (
         <>
-            <div className="card">
-                <div className="card-header">
-                    <h3 className="card-header-title">Transaction Overview</h3>
-                    <button className="btn btn-sm d-flex btn-white" onClick={onClear}>
+            <Card ui="dashkit">
+                <CardHeader ui="dashkit" className="gap-2">
+                    <CardTitle as="h3" ui="dashkit">
+                        Transaction Overview
+                    </CardTitle>
+                    <Button ui="dashkit" variant="white" size="sm" className="flex" onClick={onClear}>
                         Clear
-                    </button>
-                </div>
+                    </Button>
+                    <DownloadDropdown filename={signature || 'signature'} data={raw} />
+                </CardHeader>
                 <TableCardBody>
-                    <tr>
-                        <td>Serialized Size</td>
-                        <td className="text-lg-end">
-                            <div className="d-flex align-items-end flex-column">
+                    <BaseTable.Row>
+                        <BaseTable.Cell>Serialized Size</BaseTable.Cell>
+                        <BaseTable.Cell className="text-right">
+                            <div className="flex flex-col items-end">
                                 {size} bytes
-                                <span className={size <= PACKET_DATA_SIZE ? 'text-muted' : 'text-warning'}>
+                                <span
+                                    className={
+                                        size <= PACKET_DATA_SIZE ? 'text-dk-gray-700' : 'text-dk-warning-on-dark'
+                                    }
+                                >
                                     Max transaction size is {PACKET_DATA_SIZE} bytes
                                 </span>
                             </div>
-                        </td>
-                    </tr>
-                    <tr>
-                        <td>Fees</td>
-                        <td className="text-lg-end">
-                            <div className="d-flex align-items-end flex-column">
+                        </BaseTable.Cell>
+                    </BaseTable.Row>
+                    <BaseTable.Row>
+                        <BaseTable.Cell>Fees</BaseTable.Cell>
+                        <BaseTable.Cell className="text-right">
+                            <div className="flex flex-col items-end">
                                 <SolBalance lamports={fee} />
-                                <span className="text-muted">
+                                <span className="text-dk-gray-700">
                                     {`Each signature costs ${DEFAULT_FEES.lamportsPerSignature} lamports`}
                                 </span>
                             </div>
-                        </td>
-                    </tr>
+                        </BaseTable.Cell>
+                    </BaseTable.Row>
 
-                    <tr>
-                        <td>
-                            <div className="d-flex align-items-start flex-column">
+                    <BaseTable.Row>
+                        <BaseTable.Cell>
+                            <div className="flex flex-col items-start">
                                 Fee payer
-                                <span className="mt-1">
-                                    <span className="badge bg-info-soft me-2">Signer</span>
-                                    <span className="badge bg-danger-soft me-2">Writable</span>
+                                <span className="mt-[3px]">
+                                    <Badge ui="dashkit" variant="info" className="mr-1.5">
+                                        Signer
+                                    </Badge>
+                                    <Badge ui="dashkit" variant="destructive" className="mr-1.5">
+                                        Writable
+                                    </Badge>
                                 </span>
                             </div>
-                        </td>
-                        <td className="text-end">
+                        </BaseTable.Cell>
+                        <BaseTable.Cell className="text-right">
                             {message.staticAccountKeys.length === 0 ? (
                                 'No Fee Payer'
                             ) : (
@@ -489,10 +619,10 @@ function OverviewCard({ message, raw, onClear }: { message: VersionedMessage; ra
                                     validator={feePayerValidator}
                                 />
                             )}
-                        </td>
-                    </tr>
+                        </BaseTable.Cell>
+                    </BaseTable.Row>
                 </TableCardBody>
-            </div>
+            </Card>
         </>
     );
 }

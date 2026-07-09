@@ -1,15 +1,11 @@
+/* eslint-disable no-restricted-syntax -- test assertions use RegExp for pattern matching */
 import { BaseInstructionCard } from '@components/common/BaseInstructionCard';
-import {
-    AddressLookupTableAccount,
-    clusterApiUrl,
-    ComputeBudgetProgram,
-    Connection,
-    TransactionMessage,
-} from '@solana/web3.js';
-import { render, screen } from '@testing-library/react';
+import { ComputeBudgetProgram, TransactionMessage } from '@solana/web3.js';
+import { render, screen, waitFor } from '@testing-library/react';
 import { useSearchParams } from 'next/navigation';
 import { vi } from 'vitest';
 
+import { resolveAddressLookupTables } from '@/app/__tests__/mock-resolvers';
 import * as stubs from '@/app/__tests__/mock-stubs';
 import * as mock from '@/app/__tests__/mocks';
 import { ClusterProvider } from '@/app/providers/cluster';
@@ -29,14 +25,9 @@ describe('instruction::ComputeBudgetDetailsCard', () => {
     test('should render "SetComputeUnitPrice"', async () => {
         const index = 0;
         const m = mock.deserializeMessageV0(stubs.computeBudgetMsg);
-        const connection = new Connection(clusterApiUrl('mainnet-beta'));
-        const lookups = await Promise.all(
-            m.addressTableLookups.map(lookup =>
-                connection.getAddressLookupTable(lookup.accountKey).then(val => val.value)
-            )
-        );
+        const lookups = resolveAddressLookupTables(m.addressTableLookups);
         const ti = TransactionMessage.decompile(m, {
-            addressLookupTableAccounts: lookups.filter(x => x !== null) as AddressLookupTableAccount[],
+            addressLookupTableAccounts: lookups,
         }).instructions[index];
         expect(ti.programId.equals(ComputeBudgetProgram.programId)).toBeTruthy();
 
@@ -52,22 +43,20 @@ describe('instruction::ComputeBudgetDetailsCard', () => {
                         InstructionCardComponent={BaseInstructionCard}
                     />
                 </ClusterProvider>
-            </ScrollAnchorProvider>
+            </ScrollAnchorProvider>,
         );
-        expect(screen.getByText(/7.187812 lamports per compute unit/)).toBeInTheDocument();
+        // waitFor's act() boundary absorbs ClusterProvider's post-mount dispatch
+        await waitFor(() => {
+            expect(screen.getByText(/7.187812 lamports per compute unit/)).toBeInTheDocument();
+        });
     });
 
     test('should render "SetComputeUnitLimit"', async () => {
         const index = 1;
         const m = mock.deserializeMessageV0(stubs.computeBudgetMsg);
-        const connection = new Connection(clusterApiUrl('mainnet-beta'));
-        const lookups = await Promise.all(
-            m.addressTableLookups.map(lookup =>
-                connection.getAddressLookupTable(lookup.accountKey).then(val => val.value)
-            )
-        );
+        const lookups = resolveAddressLookupTables(m.addressTableLookups);
         const ti = TransactionMessage.decompile(m, {
-            addressLookupTableAccounts: lookups.filter(x => x !== null) as AddressLookupTableAccount[],
+            addressLookupTableAccounts: lookups,
         }).instructions[index];
         expect(ti.programId.equals(ComputeBudgetProgram.programId)).toBeTruthy();
 
@@ -83,8 +72,11 @@ describe('instruction::ComputeBudgetDetailsCard', () => {
                         InstructionCardComponent={BaseInstructionCard}
                     />
                 </ClusterProvider>
-            </ScrollAnchorProvider>
+            </ScrollAnchorProvider>,
         );
-        expect(screen.getByText(/155.666 compute units/)).toBeInTheDocument();
-    });
+        // waitFor's act() boundary absorbs ClusterProvider's post-mount dispatch
+        await waitFor(() => {
+            expect(screen.getByText(/155.666 compute units/)).toBeInTheDocument();
+        });
+    }, 15000);
 });

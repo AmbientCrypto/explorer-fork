@@ -1,10 +1,12 @@
 'use client';
 
-import { MetadataJson, programs } from '@metaplex/js';
-import getEditionInfo, { EditionInfo } from '@providers/accounts/utils/getEditionInfo';
+import { fetchNftData } from '@entities/nft';
+import { getStakeActivation, StakeAccount } from '@features/stake';
+import { VoteAccount } from '@features/vote/lib/validators'; // deep import on purpose: this provider only needs the account schema, not the vote UI the barrel re-exports
 import * as Cache from '@providers/cache';
 import { ActionType, FetchStatus } from '@providers/cache';
 import { useCluster } from '@providers/cluster';
+import { createSolanaRpc } from '@solana/kit';
 import {
     AddressLookupTableAccount,
     AddressLookupTableProgram,
@@ -15,12 +17,11 @@ import {
     SystemProgram,
 } from '@solana/web3.js';
 import { Cluster } from '@utils/cluster';
-import { pubkeyToString } from '@utils/index';
 import { assertIsTokenProgram, TokenProgram } from '@utils/programs';
 import { ParsedAddressLookupTableAccount } from '@validators/accounts/address-lookup-table';
+import { AuctionAccount } from '@validators/accounts/auction';
 import { ConfigAccount } from '@validators/accounts/config';
 import { NonceAccount } from '@validators/accounts/nonce';
-import { StakeAccount } from '@validators/accounts/stake';
 import { SysvarAccount } from '@validators/accounts/sysvar';
 import { MintAccountInfo, TokenAccount, TokenAccountInfo } from '@validators/accounts/token';
 import {
@@ -28,20 +29,17 @@ import {
     ProgramDataAccountInfo,
     UpgradeableLoaderAccount,
 } from '@validators/accounts/upgradeable-program';
-import { VoteAccount } from '@validators/accounts/vote';
 import { ParsedInfo } from '@validators/index';
 import React from 'react';
 import { create } from 'superstruct';
 
-import { getProxiedUri } from '@/app/features/metadata/utils';
+import { alloc } from '@/app/shared/lib/bytes';
+import { Logger } from '@/app/shared/lib/logger';
 
 import { HistoryProvider } from './history';
 import { RewardsProvider } from './rewards';
 import { TokensProvider } from './tokens';
-import { getStakeActivation } from './utils/stake';
 export { useAccountHistory } from './history';
-
-const Metadata = programs.metadata.Metadata;
 
 export type StakeProgramData = {
     program: 'stake';
@@ -55,17 +53,18 @@ export type UpgradeableLoaderAccountData = {
     programData?: ProgramDataAccountInfo;
 };
 
-export type NFTData = {
-    metadata: programs.metadata.MetadataData;
-    json: MetadataJson | undefined;
-    editionInfo: EditionInfo;
-};
+export function isUpgradeableLoaderAccountData(data: { program: string }): data is UpgradeableLoaderAccountData {
+    return data.program === 'bpf-upgradeable-loader';
+}
+
+import type { NFTData } from '@entities/nft';
+export type { EditionInfo, NFTData } from '@entities/nft';
 
 export function isTokenProgramData(data: { program: string }): data is TokenProgramData {
     try {
         assertIsTokenProgram(data.program);
         return true;
-    } catch (e) {
+    } catch (_e) {
         return false;
     }
 }
@@ -100,6 +99,11 @@ export type AddressLookupTableProgramData = {
     parsed: ParsedAddressLookupTableAccount;
 };
 
+export type AuctionProgramData = {
+    program: 'auction';
+    parsed: AuctionAccount;
+};
+
 export type ParsedData =
     | UpgradeableLoaderAccountData
     | StakeProgramData
@@ -108,11 +112,12 @@ export type ParsedData =
     | NonceProgramData
     | SysvarProgramData
     | ConfigProgramData
-    | AddressLookupTableProgramData;
+    | AddressLookupTableProgramData
+    | AuctionProgramData;
 
 export interface AccountData {
     parsed?: ParsedData;
-    raw?: Buffer;
+    raw?: Uint8Array;
 }
 
 export interface Account {
@@ -124,13 +129,18 @@ export interface Account {
     data: AccountData;
 }
 
-type State = Cache.State<Account>;
-type Dispatch = Cache.Dispatch<Account>;
+/**
+ * Contexts and State exported for mocking purposes only (e.g., Storybook stories).
+ * Do not use these directly in application code - use the provided hooks instead.
+ * @see .storybook/__mocks__/MockAccountsProvider.tsx
+ */
+export type State = Cache.State<Account>;
+export type Dispatch = Cache.Dispatch<Account>;
 type Fetchers = { [mode in FetchAccountDataMode]: MultipleAccountFetcher };
 
-const FetchersContext = React.createContext<Fetchers | undefined>(undefined);
-const StateContext = React.createContext<State | undefined>(undefined);
-const DispatchContext = React.createContext<Dispatch | undefined>(undefined);
+export const FetchersContext = React.createContext<Fetchers | undefined>(undefined);
+export const StateContext = React.createContext<State | undefined>(undefined);
+export const DispatchContext = React.createContext<Dispatch | undefined>(undefined);
 
 class MultipleAccountFetcher {
     pubkeys: Set<string> = new Set();
@@ -140,7 +150,7 @@ class MultipleAccountFetcher {
         private dispatch: Dispatch,
         private cluster: Cluster,
         private url: string,
-        private dataMode: FetchAccountDataMode
+        private dataMode: FetchAccountDataMode,
     ) {}
     fetch = (pubkey: PublicKey) => {
         if (this.pubkeys !== undefined) this.pubkeys.add(pubkey.toBase58());
@@ -157,6 +167,10 @@ class MultipleAccountFetcher {
             }, 100);
         }
     };
+    cancel = () => {
+        clearTimeout(this.fetchTimeout);
+        this.fetchTimeout = undefined;
+    };
 }
 
 export type FetchAccountDataMode = 'parsed' | 'raw' | 'skip';
@@ -171,14 +185,20 @@ export function AccountsProvider({ children }: AccountsProviderProps) {
         skip: new MultipleAccountFetcher(dispatch, cluster, url, 'skip'),
     }));
 
-    // Clear accounts cache whenever cluster is changed
+    // Cancel pending timers on deps-change and unmount so a debounced batch can't fire into a stale tree.
     React.useEffect(() => {
         dispatch({ type: ActionType.Clear, url });
-        setFetchers({
+        const next: Fetchers = {
             parsed: new MultipleAccountFetcher(dispatch, cluster, url, 'parsed'),
             raw: new MultipleAccountFetcher(dispatch, cluster, url, 'raw'),
             skip: new MultipleAccountFetcher(dispatch, cluster, url, 'skip'),
-        });
+        };
+        setFetchers(next);
+        return () => {
+            next.parsed.cancel();
+            next.raw.cancel();
+            next.skip.cancel();
+        };
     }, [dispatch, cluster, url]);
 
     return (
@@ -245,7 +265,7 @@ async function fetchMultipleAccounts({
                 let account: Account;
                 if (result === null) {
                     account = {
-                        data: { raw: Buffer.alloc(0) },
+                        data: { raw: alloc(0) },
                         executable: false,
                         lamports: 0,
                         owner: SystemProgram.programId,
@@ -259,15 +279,24 @@ async function fetchMultipleAccounts({
                         const accountData: ParsedAccountData = result.data;
                         space = result.data.space;
                         try {
-                            parsedData = await handleParsedAccountData(connection, pubkey, accountData);
+                            parsedData = await handleParsedAccountData(
+                                connection,
+                                pubkey,
+                                accountData,
+                                url,
+                                result.lamports,
+                            );
                         } catch (error) {
-                            console.error(error, { address: pubkey.toBase58(), url });
+                            Logger.error(error, {
+                                address: pubkey.toBase58(),
+                                url,
+                            });
                         }
                     }
 
                     // If we cannot parse account layout as native spl account
                     // then keep raw data for other components to decode
-                    let rawData: Buffer | undefined;
+                    let rawData: Uint8Array | undefined;
                     if (!parsedData && !('parsed' in result.data) && dataMode !== 'skip') {
                         space = result.data.length;
                         rawData = result.data;
@@ -296,7 +325,7 @@ async function fetchMultipleAccounts({
             }
         } catch (error) {
             if (cluster !== Cluster.Custom) {
-                console.error(error, { url });
+                Logger.error(error, { url });
             }
 
             for (const pubkey of batch) {
@@ -311,10 +340,12 @@ async function fetchMultipleAccounts({
     }
 }
 
-async function handleParsedAccountData(
+export async function handleParsedAccountData(
     connection: Connection,
     accountKey: PublicKey,
-    accountData: ParsedAccountData
+    accountData: ParsedAccountData,
+    url: string,
+    lamports: number,
 ): Promise<ParsedData | undefined> {
     const info = create(accountData.parsed, ParsedInfo);
     switch (accountData.program) {
@@ -340,16 +371,22 @@ async function handleParsedAccountData(
 
         case 'stake': {
             const parsed = create(info, StakeAccount);
-            const isDelegated = parsed.type === 'delegated';
+            const stakeInfo = parsed.info;
 
-            // TODO(ngundotra): replace with web3.js fix when live
-            const activation = isDelegated ? await getStakeActivation(connection, accountKey) : undefined;
+            const activation =
+                parsed.type === 'delegated' && stakeInfo.stake !== null
+                    ? await getStakeActivation(createSolanaRpc(url), {
+                          delegation: stakeInfo.stake.delegation,
+                          lamports: BigInt(lamports),
+                          rentExemptReserve: stakeInfo.meta.rentExemptReserve,
+                      })
+                    : undefined;
             return {
                 activation: activation
                     ? {
                           active: Number(activation.active),
                           inactive: Number(activation.inactive),
-                          state: activation.status as any,
+                          state: activation.status,
                       }
                     : undefined,
                 parsed,
@@ -393,29 +430,20 @@ async function handleParsedAccountData(
             };
         }
 
+        case 'auction': {
+            return {
+                parsed: create(info, AuctionAccount),
+                program: accountData.program,
+            };
+        }
+
         case 'spl-token':
         case 'spl-token-2022': {
             const parsed = create(info, TokenAccount);
             let nftData;
 
-            try {
-                // Generate a PDA and check for a Metadata Account
-                if (parsed.type === 'mint') {
-                    const metadata = await Metadata.load(connection, await Metadata.getPDA(accountKey));
-                    if (metadata) {
-                        // We have a valid Metadata account. Try and pull edition data.
-                        const editionInfo = await getEditionInfo(metadata, connection);
-                        const id = pubkeyToString(accountKey);
-                        const metadataJSON = await getMetaDataJSON(id, metadata.data);
-                        nftData = {
-                            editionInfo,
-                            json: metadataJSON,
-                            metadata: metadata.data,
-                        };
-                    }
-                }
-            } catch (error) {
-                // unable to find NFT metadata account
+            if (parsed.type === 'mint') {
+                nftData = await fetchNftData(accountKey, url, { onError: ex => Logger.error(ex) });
             }
 
             return {
@@ -426,56 +454,6 @@ async function handleParsedAccountData(
         }
     }
 }
-
-const IMAGE_MIME_TYPE_REGEX = /data:image\/(svg\+xml|png|jpeg|gif)/g;
-
-const getMetaDataJSON = async (
-    id: string,
-    metadata: programs.metadata.MetadataData
-): Promise<MetadataJson | undefined> => {
-    return new Promise(resolve => {
-        const uri = metadata.data.uri;
-        if (!uri) return resolve(undefined);
-
-        const processJson = (extended: any) => {
-            if (!extended || (!extended.image && extended?.properties?.files?.length === 0)) {
-                return;
-            }
-
-            if (extended?.image) {
-                extended.image =
-                    extended.image.startsWith('http') || IMAGE_MIME_TYPE_REGEX.test(extended.image)
-                        ? extended.image
-                        : `${metadata.data.uri}/${extended.image}`;
-            }
-
-            return extended;
-        };
-
-        try {
-            fetch(getProxiedUri(uri))
-                .then(async _ => {
-                    try {
-                        const data = await _.json();
-                        try {
-                            localStorage.setItem(uri, JSON.stringify(data));
-                        } catch {
-                            // ignore
-                        }
-                        resolve(processJson(data));
-                    } catch {
-                        resolve(undefined);
-                    }
-                })
-                .catch(() => {
-                    resolve(undefined);
-                });
-        } catch (ex) {
-            console.error(ex);
-            resolve(undefined);
-        }
-    });
-};
 
 export function useAccounts() {
     const context = React.useContext(StateContext);
@@ -518,7 +496,7 @@ export function useMintAccountInfo(address: string | undefined): MintAccountInfo
 
             return create(parsedData.parsed.info, MintAccountInfo);
         } catch (err) {
-            console.error(err, { address });
+            Logger.error(err, { address });
         }
     }, [address, accountInfo]);
 }
@@ -538,14 +516,14 @@ export function useTokenAccountInfo(address: string | undefined): TokenAccountIn
 
             return create(parsedData.parsed.info, TokenAccountInfo);
         } catch (err) {
-            console.error(err, { address });
+            Logger.error(err, { address });
         }
     }, [address, accountInfo]);
 }
 
 function parseAddressLookupTableFromCache(
     accountInfo: Cache.CacheEntry<Account> | undefined,
-    address: string
+    address: string,
 ): [AddressLookupTableAccount | string | undefined, FetchStatus] | undefined {
     if (accountInfo === undefined) return;
     const account = accountInfo.data;
@@ -587,13 +565,13 @@ export function useAddressLookupTables(addresses: string[]) {
     const accountInfos = useAccountInfos(addresses);
     return React.useMemo(() => {
         return accountInfos.map((accountInfo, index) =>
-            parseAddressLookupTableFromCache(accountInfo, addresses[index])
+            parseAddressLookupTableFromCache(accountInfo, addresses[index]),
         );
     }, [accountInfos, addresses]);
 }
 
 export function useAddressLookupTable(
-    address: string
+    address: string,
 ): [AddressLookupTableAccount | string | undefined, FetchStatus] | undefined {
     const accountInfo = useAccountInfo(address);
     return React.useMemo(() => parseAddressLookupTableFromCache(accountInfo, address), [address, accountInfo]);
@@ -609,6 +587,6 @@ export function useFetchAccountInfo() {
         (pubkey: PublicKey, dataMode: FetchAccountDataMode) => {
             fetchers[dataMode].fetch(pubkey);
         },
-        [fetchers]
+        [fetchers],
     );
 }

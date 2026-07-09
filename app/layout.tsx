@@ -1,24 +1,33 @@
-import './scss/theme-dark.scss';
+import './styles/styles.css';
 
 import { ClusterModal } from '@components/ClusterModal';
 import { ClusterStatusButton } from '@components/ClusterStatusButton';
+import { Footer } from '@components/Footer';
 import { MessageBanner } from '@components/MessageBanner';
 import { Navbar } from '@components/Navbar';
+import { Toaster } from '@components/shared/ui/sonner/toaster';
 import { ClusterProvider } from '@providers/cluster';
 import { ScrollAnchorProvider } from '@providers/scroll-anchor';
-import { GeistSans } from 'geist/font/sans';
+import { EXPLORER_BASE_URL, isEnvEnabled } from '@utils/env';
+import { BotIdClient } from 'botid/client';
 import type { Viewport } from 'next';
-import dynamic from 'next/dynamic';
-import { Rubik } from 'next/font/google';
-import { Metadata } from 'next/types';
-const SearchBar = dynamic(() => import('@components/SearchBar'), {
-    ssr: false,
-});
+import { type Metadata } from 'next/types';
+import { Suspense } from 'react';
+
+import { SearchBar } from '@/app/components/SearchBarLoader';
+import { TokenInfoBatchProvider } from '@/app/entities/token-info';
+import { CookieConsent } from '@/app/features/cookie';
+import { VisibilityProvider } from '@/app/shared/lib/visibility';
+import { PageContainer } from '@/app/shared/ui/page-container/PageContainer';
+import { rubikFont } from '@/app/styles';
+
+import { botIdProtectedRoutes } from '../proxy';
 
 export const metadata: Metadata = {
-    description: 'Inspect transactions, accounts, blocks, and more on the Ambient blockchain',
+    description: 'Inspect transactions, accounts, blocks, and more on the Solana blockchain',
     manifest: '/manifest.json',
-    title: 'Explorer | Ambient',
+    metadataBase: new URL(EXPLORER_BASE_URL),
+    title: 'Explorer | Solana',
 };
 
 export const viewport: Viewport = {
@@ -27,47 +36,49 @@ export const viewport: Viewport = {
     width: 'device-width',
 };
 
-const rubikFont = Rubik({
-    display: 'swap',
-    subsets: ['latin'],
-    variable: '--explorer-default-font',
-    weight: ['300', '400', '700'],
-});
-
-export default function RootLayout({
-    analytics,
-    children,
-}: {
-    analytics?: React.ReactNode;
-    children: React.ReactNode;
-}) {
+export default function RootLayout({ analytics, children }: { analytics: React.ReactNode; children: React.ReactNode }) {
     return (
-        <html lang="en" className={`${rubikFont.variable} ${GeistSans.variable}`}>
+        <html lang="en" className={`${rubikFont.variable}`}>
             <head>
                 <link rel="icon" href="/favicon.png" type="image/png" />
                 <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
                 <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+                <BotIdClient
+                    protect={isEnvEnabled(process.env.NEXT_PUBLIC_BOTID_ENABLED) ? botIdProtectedRoutes : []}
+                />
             </head>
-            <body>
-                <ScrollAnchorProvider>
-                    <ClusterProvider>
-                        <ClusterModal />
-                        <div className="main-content pb-4">
-                            <Navbar>
-                                <SearchBar />
-                            </Navbar>
-                            <MessageBanner />
-                            <div className="container my-3 d-lg-none">
-                                <SearchBar />
-                            </div>
-                            <div className="container my-3 d-lg-none">
-                                <ClusterStatusButton />
-                            </div>
-                            {children}
-                        </div>
-                    </ClusterProvider>
-                </ScrollAnchorProvider>
+            {/* suppressHydrationWarning: browser extensions (e.g. wallet adapters, password managers) may inject attributes onto <body>, causing a mismatch */}
+            <body suppressHydrationWarning>
+                <Suspense fallback={null}>
+                    <ScrollAnchorProvider>
+                        <ClusterProvider>
+                            <VisibilityProvider>
+                                <TokenInfoBatchProvider>
+                                    <ClusterModal />
+                                    <div className="flex min-h-screen flex-col">
+                                        <div className="min-w-[292px] flex-1 pb-6">
+                                            <Navbar>
+                                                <SearchBar />
+                                            </Navbar>
+                                            <MessageBanner />
+                                            <PageContainer className="my-3 xl:hidden">
+                                                <SearchBar />
+                                            </PageContainer>
+                                            <PageContainer className="my-3 lg:hidden">
+                                                <ClusterStatusButton />
+                                            </PageContainer>
+                                            {children}
+                                        </div>
+                                        <Footer />
+                                    </div>
+                                    <Toaster position="bottom-center" toastOptions={{ duration: 5_000 }} />
+                                </TokenInfoBatchProvider>
+                            </VisibilityProvider>
+                        </ClusterProvider>
+                    </ScrollAnchorProvider>
+                </Suspense>
                 {analytics}
+                <CookieConsent />
             </body>
         </html>
     );

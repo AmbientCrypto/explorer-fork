@@ -1,10 +1,12 @@
 'use client';
 
 import { useCluster } from '@providers/cluster';
+import { createSolanaRpc } from '@solana/kit';
 import { Cluster } from '@utils/cluster';
 import useTabVisibility from '@utils/use-tab-visibility';
 import React from 'react';
-import { createSolanaRpc } from 'web3js-experimental';
+
+import { Logger } from '@/app/shared/lib/logger';
 
 import { DashboardInfo, DashboardInfoActionType, dashboardInfoReducer, EpochInfo } from './solanaDashboardInfo';
 import {
@@ -29,7 +31,7 @@ export enum ClusterStatsStatus {
 }
 
 const initialPerformanceInfo: PerformanceInfo = {
-    avgTps: 0,
+    avgTps: null,
     historyMaxTps: 0,
     perfHistory: {
         long: [],
@@ -54,21 +56,25 @@ const initialDashboardInfo: DashboardInfo = {
 };
 
 type SetActive = React.Dispatch<React.SetStateAction<boolean>>;
-const StatsProviderContext = React.createContext<
-    | {
-          setActive: SetActive;
-          setTimedOut: () => void;
-          retry: () => void;
-          active: boolean;
-      }
-    | undefined
+type StatsProviderState = {
+    setActive: SetActive;
+    setTimedOut: () => void;
+    retry: () => void;
+    active: boolean;
+};
+export const StatsProviderContext: React.Context<StatsProviderState | undefined> = React.createContext<
+    StatsProviderState | undefined
 >(undefined);
 
 type DashboardState = { info: DashboardInfo };
-const DashboardContext = React.createContext<DashboardState | undefined>(undefined);
+export const DashboardContext: React.Context<DashboardState | undefined> = React.createContext<
+    DashboardState | undefined
+>(undefined);
 
 type PerformanceState = { info: PerformanceInfo };
-const PerformanceContext = React.createContext<PerformanceState | undefined>(undefined);
+export const PerformanceContext: React.Context<PerformanceState | undefined> = React.createContext<
+    PerformanceState | undefined
+>(undefined);
 
 type Props = { children: React.ReactNode };
 
@@ -114,7 +120,7 @@ export function SolanaClusterStatsProvider({ children }: Props) {
                 });
             } catch (error) {
                 if (cluster !== Cluster.Custom) {
-                    console.error(error, { url });
+                    Logger.error(error, { url });
                 }
                 if (error instanceof Error) {
                     dispatchPerformanceInfo({
@@ -142,7 +148,7 @@ export function SolanaClusterStatsProvider({ children }: Props) {
                 });
             } catch (error) {
                 if (cluster !== Cluster.Custom) {
-                    console.error(error, { url });
+                    Logger.error(error, { url });
                 }
                 if (error instanceof Error) {
                     dispatchPerformanceInfo({
@@ -176,7 +182,7 @@ export function SolanaClusterStatsProvider({ children }: Props) {
                 });
             } catch (error) {
                 if (cluster !== Cluster.Custom) {
-                    console.error(error, { url });
+                    Logger.error(error, { url });
                 }
                 if (error instanceof Error) {
                     dispatchDashboardInfo({
@@ -203,7 +209,7 @@ export function SolanaClusterStatsProvider({ children }: Props) {
                         },
                         type: DashboardInfoActionType.SetLastBlockTime,
                     });
-                } catch (error) {
+                } catch (_error) {
                     // let this fail gracefully
                 }
             }
@@ -257,7 +263,7 @@ export function SolanaClusterStatsProvider({ children }: Props) {
             data: 'Cluster stats timed out',
             type: PerformanceInfoActionType.SetError,
         });
-        console.error('Cluster stats timed out');
+        Logger.error(new Error('[providers:cluster-stats] Cluster stats timed out'));
         setActive(false);
     }, []);
 

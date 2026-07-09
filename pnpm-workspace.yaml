@@ -1,0 +1,29 @@
+packages:
+  - 'packages/*'
+catalogs:
+  storybook:
+    '@storybook/addon-a11y': 10.2.6
+    '@storybook/addon-docs': 10.2.6
+    '@storybook/addon-vitest': 10.2.6
+    '@storybook/nextjs-vite': 10.2.6
+    '@storybook/react': 10.2.6
+    eslint-plugin-storybook: 10.2.6
+    storybook: 10.2.6
+  tooling:
+    typescript: '5.7.3'
+  vitest:
+    '@vitest/browser': 4.1.8
+    '@vitest/browser-playwright': 4.1.8
+    '@vitest/coverage-v8': 4.1.8
+    vitest: 4.1.8
+autoInstallPeers: true
+ignoreScripts: true
+minimumReleaseAge: 20160
+minimumReleaseAgeExclude:
+  - '@codama/*'
+  - '@solana/idl'
+  - '@solana/security-txt'
+  - codama
+  - '@solana-program/token'
+  - '@solana-program/program-metadata'
+  - '@solana/kit'

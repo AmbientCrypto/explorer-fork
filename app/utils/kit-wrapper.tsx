@@ -1,10 +1,12 @@
+import { Address, ReadonlyUint8Array } from '@solana/kit';
 import { PublicKey } from '@solana/web3.js';
-import { Address as TAddress, ReadonlyUint8Array } from 'web3js-experimental';
+
+import { toUtf8 } from '@/app/shared/lib/bytes';
 
 export function decodeString(data: ReadonlyUint8Array) {
-    return Buffer.from(data).toString('utf-8');
+    return toUtf8(new Uint8Array(data));
 }
 
-export function mapToPublicKey(address: TAddress) {
+export function mapToPublicKey(address: Address) {
     return new PublicKey(String(address));
 }

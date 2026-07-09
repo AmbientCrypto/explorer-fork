@@ -1,8 +1,9 @@
 'use client';
 
-import { ParsedAccountRenderer } from '@components/account/ParsedAccountRenderer';
-import { SecurityCard } from '@components/account/SecurityCard';
 import React from 'react';
+
+import { ParsedAccountRenderer } from '@/app/components/account/ParsedAccountRenderer';
+import { SecurityCard } from '@/app/features/security-txt/ui/SecurityCard';
 
 type Props = Readonly<{
     params: {
@@ -18,7 +19,7 @@ function SecurityCardRenderer({
     if (!parsedData || parsedData?.program !== 'bpf-upgradeable-loader') {
         return onNotFound();
     }
-    return <SecurityCard data={parsedData} />;
+    return <SecurityCard data={parsedData} pubkey={account.pubkey} />;
 }
 
 export default function SecurityPageClient({ params: { address } }: Props) {

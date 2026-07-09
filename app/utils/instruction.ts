@@ -1,10 +1,10 @@
-import { isSerumInstruction, parseSerumInstructionTitle } from '@components/instruction/serum/types';
 import { IX_TITLES, TokenInstructionType } from '@components/instruction/token/types';
 import {
     isTokenLendingInstruction,
     parseTokenLendingInstructionTitle,
 } from '@components/instruction/token-lending/types';
 import { isTokenSwapInstruction, parseTokenSwapInstructionTitle } from '@components/instruction/token-swap/types';
+import { isSerumInstruction, parseSerumInstructionTitle } from '@explorer/decoder-serum/detection';
 import { isTokenProgramId } from '@providers/accounts/tokens';
 import {
     ConfirmedSignatureInfo,
@@ -16,6 +16,8 @@ import { isTokenProgram } from '@utils/programs';
 import { intoTransactionInstruction } from '@utils/tx';
 import { ParsedInfo } from '@validators/index';
 import { create } from 'superstruct';
+
+import { Logger } from '@/app/shared/lib/logger';
 
 export type InstructionType = {
     name: string;
@@ -65,7 +67,7 @@ export function getTokenProgramInstructionName(ix: ParsedInstruction, signatureI
         const type = create(rawType, TokenInstructionType);
         return IX_TITLES[type];
     } catch (err) {
-        console.error(err, { signature: signatureInfo.signature });
+        Logger.error(err, { signature: signatureInfo.signature });
         return 'Unknown';
     }
 }
@@ -73,7 +75,7 @@ export function getTokenProgramInstructionName(ix: ParsedInstruction, signatureI
 export function getTokenInstructionName(
     transactionWithMeta: ParsedTransactionWithMeta,
     ix: ParsedInstruction | PartiallyDecodedInstruction,
-    signatureInfo: ConfirmedSignatureInfo
+    signatureInfo: ConfirmedSignatureInfo,
 ) {
     let name = 'Unknown';
 
@@ -92,6 +94,7 @@ export function getTokenInstructionName(
 
     if (transactionInstruction) {
         try {
+            // Mango is intentionally absent: its resolver lives in the modern NAME_SOURCES chain; consolidating this legacy resolver is a follow-up.
             if (isSerumInstruction(transactionInstruction)) {
                 return parseSerumInstructionTitle(transactionInstruction);
             } else if (isTokenSwapInstruction(transactionInstruction)) {
@@ -100,7 +103,7 @@ export function getTokenInstructionName(
                 return parseTokenLendingInstructionTitle(transactionInstruction);
             }
         } catch (error) {
-            console.error(error, { signature: signatureInfo.signature });
+            Logger.error(error, { signature: signatureInfo.signature });
             return undefined;
         }
     }
@@ -118,7 +121,7 @@ export function getTokenInstructionType(
     transactionWithMeta: ParsedTransactionWithMeta,
     ix: ParsedInstruction | PartiallyDecodedInstruction,
     signatureInfo: ConfirmedSignatureInfo,
-    index: number
+    index: number,
 ): InstructionType | undefined {
     const innerInstructions: (ParsedInstruction | PartiallyDecodedInstruction)[] = [];
 

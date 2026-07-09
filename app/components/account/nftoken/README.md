@@ -1,6 +1,6 @@
 # NFToken
 
-NFToken is a cheap, simple, secure NFT standard on Ambient.
+NFToken is a cheap, simple, secure NFT standard on Solana.
 
 You can find more information and support here:
 
