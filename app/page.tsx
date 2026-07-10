@@ -26,11 +26,19 @@ import React from 'react';
 
 import { Card, CardBody, CardHeader, CardTitle } from '@/app/shared/ui/Card';
 import { PageContainer } from '@/app/shared/ui/page-container/PageContainer';
+import type { AuctionActivitySummary } from '@/app/utils/auction-activity';
+import {
+    AUCTION_SIGNATURE_LIMIT,
+    formatFailedSampled,
+    formatSampledCount,
+    formatWindowCount,
+    shortenAuctionActivityError,
+    summarizeAuctionActivity,
+} from '@/app/utils/auction-activity';
 
 import { SimpleCardSkeleton } from './components/shared/Skeletons';
 
 const AUCTION_PROGRAM_ID = 'Auction111111111111111111111111111111111111';
-const AUCTION_SIGNATURE_LIMIT = 1000;
 
 export default function Page() {
     return (
@@ -66,14 +74,7 @@ const LoadingStatsCard = ({ title }: { title: string }) => {
 
 type AuctionActivityStats =
     | { status: 'idle' | 'loading' }
-    | {
-          failed24h: number;
-          latestBlockTime: number | null;
-          sampled: number;
-          status: 'ready';
-          txs1h: number;
-          txs24h: number;
-      }
+    | (AuctionActivitySummary & { status: 'ready' })
     | { message: string; status: 'error' };
 
 function HomeStatsCards() {
@@ -152,37 +153,9 @@ function AuctionProgramActivityCard() {
                     return;
                 }
 
-                const now = Math.floor(Date.now() / 1000);
-                const hourAgo = now - 60 * 60;
-                const dayAgo = now - 24 * 60 * 60;
-                let txs1h = 0;
-                let txs24h = 0;
-                let failed24h = 0;
-                let latestBlockTime: number | null = null;
-
-                for (const signature of signatures) {
-                    if (signature.blockTime == null) {
-                        continue;
-                    }
-                    latestBlockTime = Math.max(latestBlockTime ?? 0, signature.blockTime);
-                    if (signature.blockTime >= hourAgo) {
-                        txs1h++;
-                    }
-                    if (signature.blockTime >= dayAgo) {
-                        txs24h++;
-                        if (signature.err) {
-                            failed24h++;
-                        }
-                    }
-                }
-
                 setStats({
-                    failed24h,
-                    latestBlockTime,
-                    sampled: signatures.length,
+                    ...summarizeAuctionActivity(signatures, Math.floor(Date.now() / 1000), AUCTION_SIGNATURE_LIMIT),
                     status: 'ready',
-                    txs1h,
-                    txs24h,
                 });
             })
             .catch(error => {
@@ -191,7 +164,9 @@ function AuctionProgramActivityCard() {
                 }
 
                 setStats({
-                    message: error instanceof Error ? error.message : 'Unable to load auction activity',
+                    message: shortenAuctionActivityError(
+                        error instanceof Error ? error.message : 'Unable to load auction activity',
+                    ),
                     status: 'error',
                 });
             });
@@ -208,12 +183,11 @@ function AuctionProgramActivityCard() {
                 {stats.status === 'ready' ? (
                     <>
                         <h1 className="mb-3">
-                            <em className="not-italic text-dark-accent">{stats.txs24h.toLocaleString('en-US')}</em>{' '}
-                            <small className="text-base">txs in 24h sample</small>
+                            <em className="not-italic text-dark-accent">{formatSampledCount(stats)}</em>{' '}
+                            <small className="text-base">recent sampled txs</small>
                         </h1>
                         <h5 className="mb-0">
-                            <em className="not-italic text-dark-accent">{stats.txs1h.toLocaleString('en-US')}</em> in
-                            the last hour
+                            Sample window <em className="not-italic text-dark-accent">{stats.sampleWindowLabel}</em>
                         </h5>
                     </>
                 ) : (
@@ -235,13 +209,21 @@ function AuctionProgramActivityCard() {
                     <>
                         <tr>
                             <td className="w-full">Sample size</td>
-                            <td className="text-right font-mono">{stats.sampled.toLocaleString('en-US')}</td>
+                            <td className="text-right font-mono">{formatSampledCount(stats)}</td>
                         </tr>
                         <tr>
-                            <td className="w-full">Failed txs in 24h sample</td>
-                            <td className="text-right font-mono">{stats.failed24h.toLocaleString('en-US')}</td>
+                            <td className="w-full">Last hour</td>
+                            <td className="text-right font-mono">{formatWindowCount(stats.txs1h)}</td>
                         </tr>
-                        {stats.latestBlockTime != null && (
+                        <tr>
+                            <td className="w-full">Last 24h</td>
+                            <td className="text-right font-mono">{formatWindowCount(stats.txs24h)}</td>
+                        </tr>
+                        <tr>
+                            <td className="w-full">Failed sampled txs</td>
+                            <td className="text-right font-mono">{formatFailedSampled(stats)}</td>
+                        </tr>
+                        {stats.latestBlockTime !== undefined && (
                             <tr>
                                 <td className="w-full">Latest activity</td>
                                 <td className="text-right font-mono">
