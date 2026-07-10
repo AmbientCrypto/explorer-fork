@@ -7,6 +7,7 @@ import { create } from 'superstruct';
 import { Logger } from '@/app/shared/lib/logger';
 
 import {
+    AuctionCreditsUpdateInfo,
     AuthorizeInfo,
     AuthorizeWithSeedInfo,
     DepositDelegatorRewardsInfo,
@@ -21,6 +22,7 @@ import {
     VoteInfo,
     WithdrawInfo,
 } from '../../lib/instruction-types';
+import { AuctionCreditsUpdateDetailsCard } from './AuctionCreditsUpdateDetailsCard';
 import { AuthorizeDetailsCard } from './AuthorizeDetailsCard';
 import { AuthorizeWithSeedDetailsCard } from './AuthorizeWithSeedDetailsCard';
 import { DepositDelegatorRewardsDetailsCard } from './DepositDelegatorRewardsDetailsCard';
@@ -110,6 +112,10 @@ export function VoteDetailsCard(props: DetailsProps) {
             case 'towersyncswitch': {
                 const info = create(parsed.info, TowerSyncInfo);
                 return <TowerSyncDetailsCard info={info} title="Vote: Tower Sync Switch" {...props} />;
+            }
+            case 'auctioncreditsupdate': {
+                const info = create(parsed.info, AuctionCreditsUpdateInfo);
+                return <AuctionCreditsUpdateDetailsCard info={info} {...props} />;
             }
             case 'withdraw': {
                 const info = create(parsed.info, WithdrawInfo);

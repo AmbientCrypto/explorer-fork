@@ -102,6 +102,31 @@ describe('@features/vote', () => {
             expect(screen.queryByText(/Unknown Instruction/)).not.toBeInTheDocument();
         });
 
+        test('should render "auctioncreditsupdate" instruction', async () => {
+            const ix = voteParsedInstruction({
+                info: {
+                    auctionCreditsUpdate: {
+                        credits: 10_172,
+                    },
+                    voteAccount: VOTE_ACCOUNT,
+                    voteAuthority: VOTE_AUTHORITY,
+                },
+                type: 'auctioncreditsupdate',
+            });
+
+            renderCard(ix);
+
+            // waitFor's act() boundary absorbs ClusterProvider's post-mount dispatch
+            await waitFor(() => {
+                expect(screen.getByText(/Vote: Auction Credits Update/)).toBeInTheDocument();
+            });
+            expect(screen.getByText(/Vote Account/)).toBeInTheDocument();
+            expect(screen.getByText(/Vote Authority/)).toBeInTheDocument();
+            expect(screen.getByText('Auction Credits')).toBeInTheDocument();
+            expect(screen.getByText(/10,172/)).toBeInTheDocument();
+            expect(screen.queryByText(/Unknown Instruction/)).not.toBeInTheDocument();
+        });
+
         test('should fall back to UnknownDetailsCard for an unrecognized type', async () => {
             const ix = voteParsedInstruction({
                 info: {},

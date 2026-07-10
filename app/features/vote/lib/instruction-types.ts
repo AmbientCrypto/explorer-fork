@@ -116,6 +116,15 @@ export const TowerSyncInfo = type({
     voteAuthority: AddressFromString,
 });
 
+export type AuctionCreditsUpdateInfo = Infer<typeof AuctionCreditsUpdateInfo>;
+export const AuctionCreditsUpdateInfo = type({
+    auctionCreditsUpdate: type({
+        credits: number(),
+    }),
+    voteAccount: AddressFromString,
+    voteAuthority: AddressFromString,
+});
+
 export type WithdrawInfo = Infer<typeof WithdrawInfo>;
 export const WithdrawInfo = type({
     destination: AddressFromString,
