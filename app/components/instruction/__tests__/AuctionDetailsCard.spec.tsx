@@ -28,6 +28,8 @@ useSearchParams.mockReturnValue({
 test('should render parsed auction v2 instruction details', () => {
     const programId = new PublicKey(AUCTION_PROGRAM_ID);
     const bundleEscrow = '11111111111111111111111111111112';
+    const uuid = '0190a1b2-c3d4-7e5f-8123-456789abcdef';
+    const jobId = '77KbfHQ1a7bSPVXHJd7AxVq8bTWTcJQb5wp4LA4roX5';
 
     render(
         <ScrollAnchorProvider>
@@ -41,7 +43,7 @@ test('should render parsed auction v2 instruction details', () => {
                                 page_entries: [
                                     {
                                         accepted_output_tokens: 8,
-                                        job_id: '11111111111111111111111111111113',
+                                        job_id: jobId,
                                         posted_output_tokens: 9,
                                         verdict: { name: 'verified', value: 1 },
                                         verifier_claimed_bitmap: 2,
@@ -67,6 +69,8 @@ test('should render parsed auction v2 instruction details', () => {
     expect(screen.getByText('Page Entries')).toBeInTheDocument();
     expect(screen.getByText('Verified')).toBeInTheDocument();
     expect(screen.getByText('result-hash-base64')).toBeInTheDocument();
+    expect(screen.getByText(uuid)).toBeInTheDocument();
+    expect(screen.getByText(`chatcmpl-${uuid}`)).toBeInTheDocument();
 });
 
 test('should render auction parsed program errors only for auction failures', () => {

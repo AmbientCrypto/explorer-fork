@@ -1,4 +1,5 @@
 import { Address } from '@components/common/Address';
+import { AuctionJobId } from '@components/common/AuctionJobId';
 import { InstructionDetailsProps } from '@features/transaction/ui/InstructionsSection';
 import { PublicKey } from '@solana/web3.js';
 import { camelToTitleCase, snakeToTitleCase } from '@utils/index';
@@ -51,6 +52,9 @@ function renderValue(key: string, value: unknown): React.ReactNode {
         return value ? 'Yes' : 'No';
     }
     if (typeof value === 'string') {
+        if (key === 'job_id') {
+            return <AuctionJobId value={value} />;
+        }
         if (key.includes('hash')) {
             return <pre className="d-inline-block data-wrap mb-0 text-start">{value}</pre>;
         }
