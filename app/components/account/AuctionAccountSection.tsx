@@ -51,7 +51,9 @@ export function AuctionAccountSection({
 function BundleEscrowCard({ account, info }: { account: Account; info: BundleEscrowV2Info }) {
     const refresh = useFetchAccountInfo();
     const pageCount =
-        info.status.value === BUNDLE_STATUS.resultPosted ? MAX_BUNDLE_VERIFIER_PAGES : info.verifierPageCount;
+        info.status.value === BUNDLE_STATUS.resultPosted || info.status.value === BUNDLE_STATUS.expired
+            ? MAX_BUNDLE_VERIFIER_PAGES
+            : info.verifierPageCount;
     const pageAddresses = React.useMemo(
         () => Array.from({ length: pageCount }, (_, index) => findBundleVerifierPageV2(account.pubkey, index)),
         [account.pubkey, pageCount],

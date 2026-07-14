@@ -291,6 +291,46 @@ test('should probe three pages and ignore missing accounts while results are pos
     );
 });
 
+test('should render posted verifier pages after the bundle expires', async () => {
+    const pageAddresses = [0, 1, 2].map(index => findBundleVerifierPageV2(accountAddress, index));
+    const verifierPage = makeVerifierPage(accountAddress.toBase58());
+    accountProviderMocks.entries = [
+        { data: makeAccount(verifierPage, pageAddresses[0]), status: FetchStatus.Fetched },
+        ...pageAddresses.slice(1).map(address => ({
+            data: makeMissingAccount(address),
+            status: FetchStatus.Fetched,
+        })),
+    ];
+
+    renderBundleEscrow({
+        status: { name: 'expired', terminal: true, value: 5 },
+        verifierPageCount: 0,
+    });
+
+    expect(screen.getByText('Auction Verifier Page V2')).toBeInTheDocument();
+    expect(screen.getByText(uuid)).toBeInTheDocument();
+    await waitFor(() => expect(accountProviderMocks.fetch).toHaveBeenCalledTimes(3));
+});
+
+test('should not render verifier pages when the bundle expires before results are posted', async () => {
+    const pageAddresses = [0, 1, 2].map(index => findBundleVerifierPageV2(accountAddress, index));
+    accountProviderMocks.entries = pageAddresses.map(address => ({
+        data: makeMissingAccount(address),
+        status: FetchStatus.Fetched,
+    }));
+
+    renderBundleEscrow({
+        resultHash: zeroHashBase64,
+        resultHashBase58: zeroHashBase58,
+        status: { name: 'expired', terminal: true, value: 5 },
+        verifierPageCount: 0,
+    });
+
+    expect(screen.queryByText('Auction Verifier Page V2')).not.toBeInTheDocument();
+    expect(screen.getByText('Verifier pages have not been posted yet.')).toBeInTheDocument();
+    await waitFor(() => expect(accountProviderMocks.fetch).toHaveBeenCalledTimes(3));
+});
+
 test('should retry the escrow and finalized verifier pages after an RPC error', async () => {
     const pageAddress = findBundleVerifierPageV2(accountAddress, 0);
     accountProviderMocks.entries = [{ status: FetchStatus.FetchFailed }];
