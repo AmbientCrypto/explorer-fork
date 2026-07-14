@@ -1,11 +1,18 @@
 import { AuctionAccountSection } from '@components/account/AuctionAccountSection';
 import { showGenericAccountTabs } from '@components/account/tabs';
 import { handleParsedAccountData } from '@providers/accounts';
-import { Connection, ParsedAccountData, PublicKey } from '@solana/web3.js';
-import { render, screen } from '@testing-library/react';
+import { FetchStatus } from '@providers/cache';
+import { Connection, ParsedAccountData, PublicKey, SystemProgram } from '@solana/web3.js';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { findBundleVerifierPageV2 } from '@utils/auction-v2';
 import { AUCTION_PROGRAM_ID } from '@validators/accounts/auction';
 import { useSearchParams } from 'next/navigation';
-import { expect, test, vi } from 'vitest';
+import { beforeEach, expect, test, vi } from 'vitest';
+
+const accountProviderMocks = vi.hoisted(() => ({
+    entries: [] as any[],
+    fetch: vi.fn(),
+}));
 
 vi.mock('next/navigation');
 vi.mock('@providers/cluster', () => ({
@@ -19,7 +26,8 @@ vi.mock('@providers/accounts', async importOriginal => {
     const actual = await importOriginal<typeof import('@providers/accounts')>();
     return {
         ...actual,
-        useFetchAccountInfo: () => vi.fn(),
+        useAccountInfos: (addresses: string[]) => addresses.map((_, index) => accountProviderMocks.entries[index]),
+        useFetchAccountInfo: () => accountProviderMocks.fetch,
     };
 });
 
@@ -36,8 +44,15 @@ const pubkey = '11111111111111111111111111111112';
 const secondPubkey = '11111111111111111111111111111113';
 const zeroHashBase58 = '11111111111111111111111111111111';
 const zeroHashBase64 = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=';
+const uuid = '0190a1b2-c3d4-7e5f-8123-456789abcdef';
+const jobId = '77KbfHQ1a7bSPVXHJd7AxVq8bTWTcJQb5wp4LA4roX5';
 
-function makeAccount(parsed: any) {
+beforeEach(() => {
+    accountProviderMocks.entries = [];
+    accountProviderMocks.fetch.mockClear();
+});
+
+function makeAccount(parsed: any, address = accountAddress) {
     return {
         data: {
             parsed: {
@@ -48,8 +63,43 @@ function makeAccount(parsed: any) {
         executable: false,
         lamports: 1_000,
         owner: auctionProgramId,
-        pubkey: accountAddress,
+        pubkey: address,
         space: 1_024,
+    };
+}
+
+function makeMissingAccount(address: PublicKey) {
+    return {
+        data: { raw: new Uint8Array() },
+        executable: false,
+        lamports: 0,
+        owner: SystemProgram.programId,
+        pubkey: address,
+        space: 0,
+    };
+}
+
+function makeVerifierPage(bundleEscrow: string) {
+    return {
+        info: {
+            bundleEscrow,
+            entries: [
+                {
+                    acceptedOutputTokens: 4,
+                    assignedVerifiersTokenRanges: [0, 4],
+                    jobId,
+                    postedOutputTokens: 5,
+                    verdict: { name: 'verified', value: 1 },
+                    verifierClaimedBitmap: 2,
+                    verifierClaimedIndexes: [1],
+                    verifierRewardTokens: [10],
+                },
+            ],
+            entryCount: 1,
+            layoutVersion: 'v2',
+            pageIndex: 0,
+        },
+        type: 'bundleVerifierPageV2',
     };
 }
 
@@ -197,33 +247,109 @@ test('should render unexpected lifecycle zero hash as suspicious', () => {
 });
 
 test('should render verifier page v2 entries', () => {
-    const verifierPage = {
-        info: {
-            bundleEscrow: pubkey,
-            entries: [
-                {
-                    acceptedOutputTokens: 4,
-                    assignedVerifiersTokenRanges: [0, 4],
-                    jobId: secondPubkey,
-                    postedOutputTokens: 5,
-                    verdict: { name: 'verified', value: 1 },
-                    verifierClaimedBitmap: 2,
-                    verifierClaimedIndexes: [1],
-                    verifierRewardTokens: [10],
-                },
-            ],
-            entryCount: 1,
-            layoutVersion: 'v2',
-            pageIndex: 0,
-        },
-        type: 'bundleVerifierPageV2',
-    };
+    const verifierPage = makeVerifierPage(pubkey);
 
     render(<AuctionAccountSection account={makeAccount(verifierPage) as any} auctionAccount={verifierPage as any} />);
 
     expect(screen.getByText('Auction Verifier Page V2')).toBeInTheDocument();
     expect(screen.getByText('Verifier Entries')).toBeInTheDocument();
     expect(screen.getByText('Verified')).toBeInTheDocument();
+});
+
+test('should render finalized verifier pages inline on the bundle escrow', () => {
+    const pageAddress = findBundleVerifierPageV2(accountAddress, 0);
+    const verifierPage = makeVerifierPage(accountAddress.toBase58());
+    accountProviderMocks.entries = [{ data: makeAccount(verifierPage, pageAddress), status: FetchStatus.Fetched }];
+
+    renderBundleEscrow({
+        status: { name: 'finalizedVerified', terminal: true, value: 3 },
+        verifierPageCount: 1,
+    });
+
+    expect(screen.getByText('Auction Verifier Page V2')).toBeInTheDocument();
+    expect(screen.getByText(pageAddress.toBase58())).toBeInTheDocument();
+    expect(screen.getByText(uuid)).toBeInTheDocument();
+    expect(screen.getByText(`chatcmpl-${uuid}`)).toBeInTheDocument();
+});
+
+test('should probe three pages and ignore missing accounts while results are posted', async () => {
+    const pageAddresses = [0, 1, 2].map(index => findBundleVerifierPageV2(accountAddress, index));
+    accountProviderMocks.entries = pageAddresses.map(address => ({
+        data: makeMissingAccount(address),
+        status: FetchStatus.Fetched,
+    }));
+
+    renderBundleEscrow({
+        status: { name: 'resultPosted', terminal: false, value: 2 },
+        verifierPageCount: 0,
+    });
+
+    expect(screen.getByText('Verifier pages have not been posted yet.')).toBeInTheDocument();
+    await waitFor(() => expect(accountProviderMocks.fetch).toHaveBeenCalledTimes(3));
+    expect(accountProviderMocks.fetch.mock.calls.map(([address]) => address.toBase58())).toEqual(
+        pageAddresses.map(address => address.toBase58()),
+    );
+});
+
+test('should render posted verifier pages after the bundle expires', async () => {
+    const pageAddresses = [0, 1, 2].map(index => findBundleVerifierPageV2(accountAddress, index));
+    const verifierPage = makeVerifierPage(accountAddress.toBase58());
+    accountProviderMocks.entries = [
+        { data: makeAccount(verifierPage, pageAddresses[0]), status: FetchStatus.Fetched },
+        ...pageAddresses.slice(1).map(address => ({
+            data: makeMissingAccount(address),
+            status: FetchStatus.Fetched,
+        })),
+    ];
+
+    renderBundleEscrow({
+        status: { name: 'expired', terminal: true, value: 5 },
+        verifierPageCount: 0,
+    });
+
+    expect(screen.getByText('Auction Verifier Page V2')).toBeInTheDocument();
+    expect(screen.getByText(uuid)).toBeInTheDocument();
+    await waitFor(() => expect(accountProviderMocks.fetch).toHaveBeenCalledTimes(3));
+});
+
+test('should not render verifier pages when the bundle expires before results are posted', async () => {
+    const pageAddresses = [0, 1, 2].map(index => findBundleVerifierPageV2(accountAddress, index));
+    accountProviderMocks.entries = pageAddresses.map(address => ({
+        data: makeMissingAccount(address),
+        status: FetchStatus.Fetched,
+    }));
+
+    renderBundleEscrow({
+        resultHash: zeroHashBase64,
+        resultHashBase58: zeroHashBase58,
+        status: { name: 'expired', terminal: true, value: 5 },
+        verifierPageCount: 0,
+    });
+
+    expect(screen.queryByText('Auction Verifier Page V2')).not.toBeInTheDocument();
+    expect(screen.getByText('Verifier pages have not been posted yet.')).toBeInTheDocument();
+    await waitFor(() => expect(accountProviderMocks.fetch).toHaveBeenCalledTimes(3));
+});
+
+test('should retry the escrow and finalized verifier pages after an RPC error', async () => {
+    const pageAddress = findBundleVerifierPageV2(accountAddress, 0);
+    accountProviderMocks.entries = [{ status: FetchStatus.FetchFailed }];
+
+    renderBundleEscrow({
+        status: { name: 'finalizedVerified', terminal: true, value: 3 },
+        verifierPageCount: 1,
+    });
+
+    expect(screen.getByText('Failed to load verifier pages')).toBeInTheDocument();
+    await waitFor(() => expect(accountProviderMocks.fetch).toHaveBeenCalledTimes(1));
+    accountProviderMocks.fetch.mockClear();
+    fireEvent.click(screen.getAllByText('Try Again')[0]);
+
+    expect(accountProviderMocks.fetch).toHaveBeenCalledTimes(2);
+    expect(accountProviderMocks.fetch.mock.calls.map(([address]) => address.toBase58())).toEqual([
+        accountAddress.toBase58(),
+        pageAddress.toBase58(),
+    ]);
 });
 
 test('should render config policy v2 details', () => {

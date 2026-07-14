@@ -1,9 +1,14 @@
 import { AccountAddressRow, AccountBalanceRow, AccountHeader } from '@components/common/Account';
 import { Address } from '@components/common/Address';
+import { AuctionJobId } from '@components/common/AuctionJobId';
+import { ErrorCard } from '@components/common/ErrorCard';
+import { LoadingCard } from '@components/common/LoadingCard';
 import { Slot } from '@components/common/Slot';
 import { TableCardBody } from '@components/common/TableCardBody';
-import { Account, useFetchAccountInfo } from '@providers/accounts';
+import { Account, useAccountInfos, useFetchAccountInfo } from '@providers/accounts';
+import { FetchStatus } from '@providers/cache';
 import { PublicKey } from '@solana/web3.js';
+import { findBundleVerifierPageV2 } from '@utils/auction-v2';
 import { camelToTitleCase, snakeToTitleCase } from '@utils/index';
 import {
     AuctionAccount,
@@ -24,6 +29,7 @@ const BUNDLE_STATUS = {
     open: 0,
     resultPosted: 2,
 };
+const MAX_BUNDLE_VERIFIER_PAGES = 3;
 
 export function AuctionAccountSection({
     account,
@@ -44,74 +50,136 @@ export function AuctionAccountSection({
 
 function BundleEscrowCard({ account, info }: { account: Account; info: BundleEscrowV2Info }) {
     const refresh = useFetchAccountInfo();
-    return (
-        <div className="card">
-            <AccountHeader
-                title="Auction Bundle Escrow V2"
-                analyticsSection="auction_bundle_escrow_section"
-                refresh={() => refresh(account.pubkey, 'parsed')}
-            />
+    const pageCount =
+        info.status.value === BUNDLE_STATUS.resultPosted || info.status.value === BUNDLE_STATUS.expired
+            ? MAX_BUNDLE_VERIFIER_PAGES
+            : info.verifierPageCount;
+    const pageAddresses = React.useMemo(
+        () => Array.from({ length: pageCount }, (_, index) => findBundleVerifierPageV2(account.pubkey, index)),
+        [account.pubkey, pageCount],
+    );
+    const pageEntries = useAccountInfos(pageAddresses.map(address => address.toBase58()));
+    const refreshAll = React.useCallback(() => {
+        refresh(account.pubkey, 'parsed');
+        pageAddresses.forEach(address => refresh(address, 'parsed'));
+    }, [account.pubkey, pageAddresses, refresh]);
 
-            <TableCardBody>
-                <AccountAddressRow account={account} />
-                <AccountBalanceRow account={account} />
-                <TextRow label="Layout Version" value={info.layoutVersion} />
-                <EnumRow label="Status" value={info.status} />
-                <EnumRow label="Reward Tier" value={info.rewardTier} />
-                <AddressRow label="Coordinator" value={info.coordinator} />
-                <AddressRow label="Requester Refund Recipient" value={info.requesterRefundRecipient} />
-                <TextRow label="Bundle Version" value={info.bundleVersion} />
-                <HashRow label="Bundle Hash" base58={info.bundleHashBase58} base64={info.bundleHash} />
-                <TextRow label="Total Input Tokens" value={info.totalInputTokens} />
-                <TextRow label="Max Output Tokens" value={info.maxOutputTokens} />
-                <TextRow label="Escrow Lamports" value={info.escrowLamports} />
-                <AddressRow label="Winner Node Pubkey" value={info.winnerNodePubkey} />
-                <AddressRow label="Winner Vote Account" value={info.winnerVoteAccount} />
-                <TextRow label="Clearing Price Per Output Token" value={info.clearingPricePerOutputToken} />
-                <tr>
-                    <td>Selected Verifiers</td>
-                    <td className="text-lg-end">
-                        <PubkeyList values={info.selectedVerifiers} indexes={info.selectedVerifierIndexes} />
-                    </td>
-                </tr>
-                <HashRow
-                    label="Auction Hash"
-                    base58={info.auctionHashBase58}
-                    base64={info.auctionHash}
-                    placeholder={lifecycleHashPlaceholder(info, 'auction')}
+    React.useEffect(() => {
+        pageAddresses.forEach(address => refresh(address, 'parsed'));
+    }, [pageAddresses, refresh]);
+
+    const verifierPages: { account: Account; info: BundleVerifierPageV2Info }[] = [];
+    for (const entry of pageEntries) {
+        if (entry?.status !== FetchStatus.Fetched || !entry.data) continue;
+        const parsed = entry.data.data.parsed;
+        if (parsed?.program !== 'auction' || parsed.parsed.type !== 'bundleVerifierPageV2') continue;
+        verifierPages.push({ account: entry.data, info: parsed.parsed.info as BundleVerifierPageV2Info });
+    }
+    const pageFetchFailed = pageEntries.some(entry => entry?.status === FetchStatus.FetchFailed);
+    const pageFetchPending = pageEntries.some(entry => !entry || entry.status === FetchStatus.Fetching);
+    let verifierPagesContent: React.ReactNode;
+    if (pageAddresses.length === 0) {
+        verifierPagesContent = undefined;
+    } else if (pageFetchFailed) {
+        verifierPagesContent = <ErrorCard text="Failed to load verifier pages" retry={refreshAll} />;
+    } else if (pageFetchPending) {
+        verifierPagesContent = <LoadingCard message="Loading verifier pages" />;
+    } else if (verifierPages.length > 0) {
+        verifierPagesContent = verifierPages.map(page => (
+            <BundleVerifierPageCard
+                key={page.account.pubkey.toBase58()}
+                account={page.account}
+                info={page.info}
+                onRefresh={refreshAll}
+            />
+        ));
+    } else {
+        verifierPagesContent = (
+            <div className="card">
+                <div className="card-body text-center text-muted">Verifier pages have not been posted yet.</div>
+            </div>
+        );
+    }
+
+    return (
+        <>
+            <div className="card">
+                <AccountHeader
+                    title="Auction Bundle Escrow V2"
+                    analyticsSection="auction_bundle_escrow_section"
+                    refresh={refreshAll}
                 />
-                <HashRow
-                    label="Result Hash"
-                    base58={info.resultHashBase58}
-                    base64={info.resultHash}
-                    placeholder={lifecycleHashPlaceholder(info, 'result')}
-                />
-                <HashRow
-                    label="Verification Hash"
-                    base58={info.verificationHashBase58}
-                    base64={info.verificationHash}
-                    placeholder={lifecycleHashPlaceholder(info, 'verification')}
-                />
-                <TextRow label="Posted Output Tokens" value={info.postedOutputTokens} />
-                <TextRow label="Accepted Output Tokens" value={info.acceptedOutputTokens} />
-                <TextRow label="Winner Payout Lamports" value={info.winnerPayoutLamports} />
-                <SlotRow label="Settlement Deadline Slot" value={info.settlementDeadlineSlot} />
-                <SlotRow label="Result Deadline Slot" value={info.resultDeadlineSlot} />
-                <SlotRow label="Verification Deadline Slot" value={info.verificationDeadlineSlot} />
-                <SlotRow label="Claim Deadline Slot" value={info.claimDeadlineSlot} />
-                <TextRow label="Winner Reward Claimed" value={info.winnerRewardClaimed ? 'Yes' : 'No'} />
-                <TextRow label="Verifier Reward Claimed Bitmap" value={info.verifierRewardClaimedBitmap} />
-                <IndexesRow label="Verifier Reward Claimed Indexes" indexes={info.verifierRewardClaimedIndexes} />
-                <TextRow label="Quorum Verifier Bitmap" value={info.quorumVerifierBitmap} />
-                <IndexesRow label="Quorum Verifier Indexes" indexes={info.quorumVerifierIndexes} />
-                <TextRow label="Verifier Page Count" value={info.verifierPageCount} />
-                <ArrayRow label="Verifier Reward Remaining" values={info.verifierRewardRemaining} />
-            </TableCardBody>
-        </div>
+
+                <TableCardBody>
+                    <AccountAddressRow account={account} />
+                    <AccountBalanceRow account={account} />
+                    <TextRow label="Layout Version" value={info.layoutVersion} />
+                    <EnumRow label="Status" value={info.status} />
+                    <EnumRow label="Reward Tier" value={info.rewardTier} />
+                    <AddressRow label="Coordinator" value={info.coordinator} />
+                    <AddressRow label="Requester Refund Recipient" value={info.requesterRefundRecipient} />
+                    <TextRow label="Bundle Version" value={info.bundleVersion} />
+                    <HashRow label="Bundle Hash" base58={info.bundleHashBase58} base64={info.bundleHash} />
+                    <TextRow label="Total Input Tokens" value={info.totalInputTokens} />
+                    <TextRow label="Max Output Tokens" value={info.maxOutputTokens} />
+                    <TextRow label="Escrow Lamports" value={info.escrowLamports} />
+                    <AddressRow label="Winner Node Pubkey" value={info.winnerNodePubkey} />
+                    <AddressRow label="Winner Vote Account" value={info.winnerVoteAccount} />
+                    <TextRow label="Clearing Price Per Output Token" value={info.clearingPricePerOutputToken} />
+                    <tr>
+                        <td>Selected Verifiers</td>
+                        <td className="text-lg-end">
+                            <PubkeyList values={info.selectedVerifiers} indexes={info.selectedVerifierIndexes} />
+                        </td>
+                    </tr>
+                    <HashRow
+                        label="Auction Hash"
+                        base58={info.auctionHashBase58}
+                        base64={info.auctionHash}
+                        placeholder={lifecycleHashPlaceholder(info, 'auction')}
+                    />
+                    <HashRow
+                        label="Result Hash"
+                        base58={info.resultHashBase58}
+                        base64={info.resultHash}
+                        placeholder={lifecycleHashPlaceholder(info, 'result')}
+                    />
+                    <HashRow
+                        label="Verification Hash"
+                        base58={info.verificationHashBase58}
+                        base64={info.verificationHash}
+                        placeholder={lifecycleHashPlaceholder(info, 'verification')}
+                    />
+                    <TextRow label="Posted Output Tokens" value={info.postedOutputTokens} />
+                    <TextRow label="Accepted Output Tokens" value={info.acceptedOutputTokens} />
+                    <TextRow label="Winner Payout Lamports" value={info.winnerPayoutLamports} />
+                    <SlotRow label="Settlement Deadline Slot" value={info.settlementDeadlineSlot} />
+                    <SlotRow label="Result Deadline Slot" value={info.resultDeadlineSlot} />
+                    <SlotRow label="Verification Deadline Slot" value={info.verificationDeadlineSlot} />
+                    <SlotRow label="Claim Deadline Slot" value={info.claimDeadlineSlot} />
+                    <TextRow label="Winner Reward Claimed" value={info.winnerRewardClaimed ? 'Yes' : 'No'} />
+                    <TextRow label="Verifier Reward Claimed Bitmap" value={info.verifierRewardClaimedBitmap} />
+                    <IndexesRow label="Verifier Reward Claimed Indexes" indexes={info.verifierRewardClaimedIndexes} />
+                    <TextRow label="Quorum Verifier Bitmap" value={info.quorumVerifierBitmap} />
+                    <IndexesRow label="Quorum Verifier Indexes" indexes={info.quorumVerifierIndexes} />
+                    <TextRow label="Verifier Page Count" value={info.verifierPageCount} />
+                    <ArrayRow label="Verifier Reward Remaining" values={info.verifierRewardRemaining} />
+                </TableCardBody>
+            </div>
+            {verifierPagesContent}
+        </>
     );
 }
 
-function BundleVerifierPageCard({ account, info }: { account: Account; info: BundleVerifierPageV2Info }) {
+function BundleVerifierPageCard({
+    account,
+    info,
+    onRefresh,
+}: {
+    account: Account;
+    info: BundleVerifierPageV2Info;
+    onRefresh?: () => void;
+}) {
     const refresh = useFetchAccountInfo();
     return (
         <>
@@ -119,7 +187,7 @@ function BundleVerifierPageCard({ account, info }: { account: Account; info: Bun
                 <AccountHeader
                     title="Auction Verifier Page V2"
                     analyticsSection="auction_verifier_page_section"
-                    refresh={() => refresh(account.pubkey, 'parsed')}
+                    refresh={onRefresh ?? (() => refresh(account.pubkey, 'parsed'))}
                 />
 
                 <TableCardBody>
@@ -206,7 +274,7 @@ function VerifierEntriesCard({ entries }: { entries: BundleVerifierPageV2Entry[]
                             entries.map((entry, index) => (
                                 <tr key={`${entry.jobId}-${index}`}>
                                     <td>
-                                        <PubkeyValue value={entry.jobId} link />
+                                        <AuctionJobId value={entry.jobId} />
                                     </td>
                                     <td>{formatValue(entry.postedOutputTokens)}</td>
                                     <td>{formatValue(entry.acceptedOutputTokens)}</td>
