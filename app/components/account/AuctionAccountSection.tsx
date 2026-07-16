@@ -260,8 +260,12 @@ function VerifierEntriesCard({ entries }: { entries: BundleVerifierPageV2Entry[]
                 <BaseTable.Head>
                     <BaseTable.Row>
                         <BaseTable.HeaderCell>Job IDs</BaseTable.HeaderCell>
-                        <BaseTable.HeaderCell className="text-right">Posted</BaseTable.HeaderCell>
-                        <BaseTable.HeaderCell className="text-right">Accepted</BaseTable.HeaderCell>
+                        <BaseTable.HeaderCell>
+                            <span className="block text-right">Posted</span>
+                        </BaseTable.HeaderCell>
+                        <BaseTable.HeaderCell>
+                            <span className="block text-right">Accepted</span>
+                        </BaseTable.HeaderCell>
                         <BaseTable.HeaderCell>Verdict</BaseTable.HeaderCell>
                         <BaseTable.HeaderCell>Claimed</BaseTable.HeaderCell>
                         <BaseTable.HeaderCell>Verifier Allocation</BaseTable.HeaderCell>
@@ -271,13 +275,13 @@ function VerifierEntriesCard({ entries }: { entries: BundleVerifierPageV2Entry[]
                     {entries.length === 0 ? (
                         <BaseTable.Row>
                             <BaseTable.Cell colSpan={6} className="text-dark-muted-foreground">
-                                No entries
+                                No verifier entries on this page.
                             </BaseTable.Cell>
                         </BaseTable.Row>
                     ) : (
                         entries.map((entry, index) => (
                             <BaseTable.Row key={`${entry.jobId}-${index}`}>
-                                <BaseTable.Cell className="min-w-[28rem]">
+                                <BaseTable.Cell className="min-w-[22rem]">
                                     <AuctionJobId value={entry.jobId} />
                                 </BaseTable.Cell>
                                 <BaseTable.Cell className="text-right font-mono tabular-nums">
@@ -289,10 +293,10 @@ function VerifierEntriesCard({ entries }: { entries: BundleVerifierPageV2Entry[]
                                 <BaseTable.Cell>
                                     <EnumBadge value={entry.verdict} />
                                 </BaseTable.Cell>
-                                <BaseTable.Cell className="min-w-[14rem]">
+                                <BaseTable.Cell>
                                     <VerifierBitmap value={entry.verifierClaimedBitmap} />
                                 </BaseTable.Cell>
-                                <BaseTable.Cell className="min-w-[20rem]">
+                                <BaseTable.Cell>
                                     <VerifierRanges
                                         ranges={entry.assignedVerifiersTokenRanges}
                                         rewards={entry.verifierRewardTokens}
