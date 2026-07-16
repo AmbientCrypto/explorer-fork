@@ -5,6 +5,8 @@ import { ErrorCard } from '@components/common/ErrorCard';
 import { LoadingCard } from '@components/common/LoadingCard';
 import { Slot } from '@components/common/Slot';
 import { TableCardBody } from '@components/common/TableCardBody';
+import { VerifierBitmap } from '@components/common/VerifierBitmap';
+import { Badge } from '@components/shared/ui/badge';
 import { Account, useAccountInfos, useFetchAccountInfo } from '@providers/accounts';
 import { FetchStatus } from '@providers/cache';
 import { PublicKey } from '@solana/web3.js';
@@ -20,6 +22,9 @@ import {
     ConfigPolicyV2Info,
 } from '@validators/accounts/auction';
 import React from 'react';
+
+import { Card, CardHeader, CardTitle } from '@/app/shared/ui/Card';
+import { BaseTable } from '@/app/shared/ui/Table';
 
 const DEFAULT_PUBKEY = '11111111111111111111111111111111';
 const ZERO_HASH_BASE64 = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=';
@@ -158,10 +163,8 @@ function BundleEscrowCard({ account, info }: { account: Account; info: BundleEsc
                     <SlotRow label="Verification Deadline Slot" value={info.verificationDeadlineSlot} />
                     <SlotRow label="Claim Deadline Slot" value={info.claimDeadlineSlot} />
                     <TextRow label="Winner Reward Claimed" value={info.winnerRewardClaimed ? 'Yes' : 'No'} />
-                    <TextRow label="Verifier Reward Claimed Bitmap" value={info.verifierRewardClaimedBitmap} />
-                    <IndexesRow label="Verifier Reward Claimed Indexes" indexes={info.verifierRewardClaimedIndexes} />
-                    <TextRow label="Quorum Verifier Bitmap" value={info.quorumVerifierBitmap} />
-                    <IndexesRow label="Quorum Verifier Indexes" indexes={info.quorumVerifierIndexes} />
+                    <BitmapRow label="Verifier Reward Claimed Bitmap" value={info.verifierRewardClaimedBitmap} />
+                    <BitmapRow label="Quorum Verifier Bitmap" value={info.quorumVerifierBitmap} />
                     <TextRow label="Verifier Page Count" value={info.verifierPageCount} />
                     <ArrayRow label="Verifier Reward Remaining" values={info.verifierRewardRemaining} />
                 </TableCardBody>
@@ -247,56 +250,60 @@ function ConfigPolicyCard({ account, info }: { account: Account; info: ConfigPol
 
 function VerifierEntriesCard({ entries }: { entries: BundleVerifierPageV2Entry[] }) {
     return (
-        <div className="card">
-            <div className="card-header">
-                <h3 className="card-header-title">Verifier Entries</h3>
-            </div>
-            <div className="table-responsive mb-0">
-                <table className="table-sm card-table table">
-                    <thead>
-                        <tr>
-                            <th className="text-muted">Job</th>
-                            <th className="text-muted">Posted</th>
-                            <th className="text-muted">Accepted</th>
-                            <th className="text-muted">Verdict</th>
-                            <th className="text-muted">Claimed</th>
-                            <th className="text-muted">Verifier Ranges / Rewards</th>
-                        </tr>
-                    </thead>
-                    <tbody className="list">
-                        {entries.length === 0 ? (
-                            <tr>
-                                <td colSpan={6} className="text-muted">
-                                    No entries
-                                </td>
-                            </tr>
-                        ) : (
-                            entries.map((entry, index) => (
-                                <tr key={`${entry.jobId}-${index}`}>
-                                    <td>
-                                        <AuctionJobId value={entry.jobId} />
-                                    </td>
-                                    <td>{formatValue(entry.postedOutputTokens)}</td>
-                                    <td>{formatValue(entry.acceptedOutputTokens)}</td>
-                                    <td>
-                                        <EnumBadge value={entry.verdict} />
-                                    </td>
-                                    <td>
-                                        <IndexBadges indexes={entry.verifierClaimedIndexes} />
-                                    </td>
-                                    <td>
-                                        <VerifierRanges
-                                            ranges={entry.assignedVerifiersTokenRanges}
-                                            rewards={entry.verifierRewardTokens}
-                                        />
-                                    </td>
-                                </tr>
-                            ))
-                        )}
-                    </tbody>
-                </table>
-            </div>
-        </div>
+        <Card ui="dashkit">
+            <CardHeader ui="dashkit">
+                <CardTitle as="h3" ui="dashkit">
+                    Verifier Entries
+                </CardTitle>
+            </CardHeader>
+            <BaseTable ui="dashkit" variant="card">
+                <BaseTable.Head>
+                    <BaseTable.Row>
+                        <BaseTable.HeaderCell>Job IDs</BaseTable.HeaderCell>
+                        <BaseTable.HeaderCell className="text-right">Posted</BaseTable.HeaderCell>
+                        <BaseTable.HeaderCell className="text-right">Accepted</BaseTable.HeaderCell>
+                        <BaseTable.HeaderCell>Verdict</BaseTable.HeaderCell>
+                        <BaseTable.HeaderCell>Claimed</BaseTable.HeaderCell>
+                        <BaseTable.HeaderCell>Verifier Allocation</BaseTable.HeaderCell>
+                    </BaseTable.Row>
+                </BaseTable.Head>
+                <BaseTable.Body>
+                    {entries.length === 0 ? (
+                        <BaseTable.Row>
+                            <BaseTable.Cell colSpan={6} className="text-dark-muted-foreground">
+                                No entries
+                            </BaseTable.Cell>
+                        </BaseTable.Row>
+                    ) : (
+                        entries.map((entry, index) => (
+                            <BaseTable.Row key={`${entry.jobId}-${index}`}>
+                                <BaseTable.Cell className="min-w-[28rem]">
+                                    <AuctionJobId value={entry.jobId} />
+                                </BaseTable.Cell>
+                                <BaseTable.Cell className="text-right font-mono tabular-nums">
+                                    {formatValue(entry.postedOutputTokens)}
+                                </BaseTable.Cell>
+                                <BaseTable.Cell className="text-right font-mono tabular-nums">
+                                    {formatValue(entry.acceptedOutputTokens)}
+                                </BaseTable.Cell>
+                                <BaseTable.Cell>
+                                    <EnumBadge value={entry.verdict} />
+                                </BaseTable.Cell>
+                                <BaseTable.Cell className="min-w-[14rem]">
+                                    <VerifierBitmap value={entry.verifierClaimedBitmap} />
+                                </BaseTable.Cell>
+                                <BaseTable.Cell className="min-w-[20rem]">
+                                    <VerifierRanges
+                                        ranges={entry.assignedVerifiersTokenRanges}
+                                        rewards={entry.verifierRewardTokens}
+                                    />
+                                </BaseTable.Cell>
+                            </BaseTable.Row>
+                        ))
+                    )}
+                </BaseTable.Body>
+            </BaseTable>
+        </Card>
     );
 }
 
@@ -426,12 +433,12 @@ function ArrayRow({ label, values }: { label: string; values: unknown[] | undefi
     );
 }
 
-function IndexesRow({ label, indexes }: { label: string; indexes: number[] | undefined }) {
+function BitmapRow({ label, value }: { label: string; value: number }) {
     return (
         <tr>
             <td>{label}</td>
-            <td className="text-lg-end">
-                <IndexBadges indexes={indexes} />
+            <td className="text-right">
+                <VerifierBitmap value={value} />
             </td>
         </tr>
     );
@@ -469,25 +476,12 @@ function EnumBadge({ value }: { value: AuctionEnum | undefined }) {
     }
     const terminal = value.terminal === true;
     return (
-        <>
-            <span className={`badge bg-${terminal ? 'success' : 'info'}-soft`}>{formatName(value.name)}</span>
-            <span className="ms-2 text-muted">#{value.value}</span>
-        </>
-    );
-}
-
-function IndexBadges({ indexes }: { indexes: number[] | undefined }) {
-    if (!indexes || indexes.length === 0) {
-        return <Muted>None</Muted>;
-    }
-    return (
-        <>
-            {indexes.map(index => (
-                <span className="badge bg-info-soft me-1" key={index}>
-                    #{index}
-                </span>
-            ))}
-        </>
+        <span className="inline-flex items-center gap-2 whitespace-nowrap">
+            <Badge ui="dashkit" variant={terminal ? 'success' : 'info'}>
+                {formatName(value.name)}
+            </Badge>
+            <span className="text-dark-muted-foreground">#{value.value}</span>
+        </span>
     );
 }
 
@@ -504,10 +498,22 @@ function VerifierRanges({ ranges, rewards }: { ranges: number[] | undefined; rew
         return <Muted>None</Muted>;
     }
     return (
-        <div className="d-flex flex-column gap-1">
+        <div className="grid gap-2">
             {rows.map(({ index, start, end, reward }) => (
-                <span className="font-monospace" key={index}>
-                    #{index}: {formatValue(start)}-{formatValue(end)} / {formatValue(reward)}
+                <span className="flex flex-wrap items-center gap-2" key={index}>
+                    <Badge ui="dashkit" variant="info">
+                        Verifier #{index}
+                    </Badge>
+                    <span className="whitespace-nowrap">
+                        <span className="text-dark-muted-foreground">Tokens </span>
+                        <span className="font-mono tabular-nums">
+                            {formatValue(start)}–{formatValue(end)}
+                        </span>
+                    </span>
+                    <span className="whitespace-nowrap">
+                        <span className="text-dark-muted-foreground">Reward </span>
+                        <span className="font-mono tabular-nums">{formatValue(reward)}</span>
+                    </span>
                 </span>
             ))}
         </div>

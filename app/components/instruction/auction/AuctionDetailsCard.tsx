@@ -1,5 +1,6 @@
 import { Address } from '@components/common/Address';
 import { AuctionJobId } from '@components/common/AuctionJobId';
+import { VerifierBitmap } from '@components/common/VerifierBitmap';
 import { InstructionDetailsProps } from '@features/transaction/ui/InstructionsSection';
 import { PublicKey } from '@solana/web3.js';
 import { camelToTitleCase, snakeToTitleCase } from '@utils/index';
@@ -46,6 +47,9 @@ function renderValue(key: string, value: unknown): React.ReactNode {
         return <span className="text-muted">None</span>;
     }
     if (typeof value === 'number') {
+        if (key.endsWith('_bitmap')) {
+            return <VerifierBitmap value={value} />;
+        }
         return value.toLocaleString('en-US');
     }
     if (typeof value === 'boolean') {

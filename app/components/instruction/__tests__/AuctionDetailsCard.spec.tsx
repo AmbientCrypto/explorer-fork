@@ -71,6 +71,7 @@ test('should render parsed auction v2 instruction details', () => {
     expect(screen.getByText('result-hash-base64')).toBeInTheDocument();
     expect(screen.getByText(uuid)).toBeInTheDocument();
     expect(screen.getByText(`chatcmpl-${uuid}`)).toBeInTheDocument();
+    expect(screen.getByLabelText('Bitmap 00000010, decimal 2; set verifier indexes 1')).toBeInTheDocument();
 });
 
 test('should render auction parsed program errors only for auction failures', () => {

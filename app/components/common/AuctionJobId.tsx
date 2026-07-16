@@ -3,12 +3,22 @@ import React from 'react';
 
 export function AuctionJobId({ value }: { value: string }) {
     const uuid = bundleVerifierJobIdToUuid(value);
-    if (!uuid) return <span className="font-monospace text-break">{value}</span>;
+    if (!uuid) return <span className="break-all font-mono">{value}</span>;
 
     return (
-        <span className="d-inline-flex flex-column font-monospace text-break">
-            <span>{uuid}</span>
-            <span className="text-muted">chatcmpl-{uuid}</span>
+        <span className="grid gap-1 text-left">
+            <span className="flex items-start gap-2 sm:whitespace-nowrap">
+                <span className="w-14 shrink-0 text-dk-xs uppercase tracking-[0.08em] text-dark-muted-foreground">
+                    UUID
+                </span>
+                <span className="break-all font-mono sm:break-normal">{uuid}</span>
+            </span>
+            <span className="flex items-start gap-2 sm:whitespace-nowrap">
+                <span className="w-14 shrink-0 text-dk-xs uppercase tracking-[0.08em] text-dark-muted-foreground">
+                    Chat ID
+                </span>
+                <span className="break-all font-mono text-dark-muted-foreground sm:break-normal">chatcmpl-{uuid}</span>
+            </span>
         </span>
     );
 }

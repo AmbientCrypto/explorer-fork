@@ -186,6 +186,8 @@ test('should render bundle escrow v2 details', () => {
     expect(screen.getByText('Result Posted')).toBeInTheDocument();
     expect(screen.getByText('bundle-hash-base58')).toBeInTheDocument();
     expect(screen.getByText('Verifier Page Count')).toBeInTheDocument();
+    expect(screen.getByLabelText('Bitmap 00000001, decimal 1; set verifier indexes 0')).toBeInTheDocument();
+    expect(screen.getByLabelText('Bitmap 00000010, decimal 2; set verifier indexes 1')).toBeInTheDocument();
 });
 
 test('should render unset auction hash as pending settlement', () => {
@@ -253,7 +255,10 @@ test('should render verifier page v2 entries', () => {
 
     expect(screen.getByText('Auction Verifier Page V2')).toBeInTheDocument();
     expect(screen.getByText('Verifier Entries')).toBeInTheDocument();
+    expect(screen.getByText('Job IDs')).toBeInTheDocument();
+    expect(screen.getByText('Verifier Allocation')).toBeInTheDocument();
     expect(screen.getByText('Verified')).toBeInTheDocument();
+    expect(screen.getByLabelText('Bitmap 00000010, decimal 2; set verifier indexes 1')).toBeInTheDocument();
 });
 
 test('should render finalized verifier pages inline on the bundle escrow', () => {
