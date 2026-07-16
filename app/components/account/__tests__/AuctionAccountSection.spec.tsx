@@ -134,8 +134,8 @@ const bundleEscrow = {
         verificationHash: 'verification-hash-base64',
         verificationHashBase58: 'verification-hash-base58',
         verifierPageCount: 1,
-        verifierRewardClaimedBitmap: 1,
-        verifierRewardClaimedIndexes: [0],
+        verifierRewardClaimedBitmap: 0,
+        verifierRewardClaimedIndexes: [],
         verifierRewardRemaining: [1, 2],
         winnerNodePubkey: pubkey,
         winnerPayoutLamports: 900,
@@ -186,6 +186,12 @@ test('should render bundle escrow v2 details', () => {
     expect(screen.getByText('Result Posted')).toBeInTheDocument();
     expect(screen.getByText('bundle-hash-base58')).toBeInTheDocument();
     expect(screen.getByText('Verifier Page Count')).toBeInTheDocument();
+    expect(screen.getByLabelText('Bitmap 00000000, decimal 0; set verifier indexes none')).toHaveTextContent(
+        '0b00000000 (0)None',
+    );
+    expect(screen.getByLabelText('Bitmap 00000010, decimal 2; set verifier indexes 1')).toHaveTextContent(
+        '0b00000010 (2)#1',
+    );
 });
 
 test('should render unset auction hash as pending settlement', () => {
@@ -253,7 +259,10 @@ test('should render verifier page v2 entries', () => {
 
     expect(screen.getByText('Auction Verifier Page V2')).toBeInTheDocument();
     expect(screen.getByText('Verifier Entries')).toBeInTheDocument();
+    expect(screen.getByText('Job IDs')).toBeInTheDocument();
+    expect(screen.getByText('Verifier Allocation')).toBeInTheDocument();
     expect(screen.getByText('Verified')).toBeInTheDocument();
+    expect(screen.getByLabelText('Bitmap 00000010, decimal 2; set verifier indexes 1')).toBeInTheDocument();
 });
 
 test('should render finalized verifier pages inline on the bundle escrow', () => {
